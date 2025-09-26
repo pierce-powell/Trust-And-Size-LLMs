@@ -10,7 +10,7 @@
 source venv/bin/activate
 
 # Hugging Face auth + cache
-export HF_TOKEN="hf_xxxYOURTOKENxxx"
+export HF_TOKEN="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"
 export HF_HOME="/lustre/fs1/$USER/hf_home"
 export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
