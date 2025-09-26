@@ -1,0 +1,55 @@
+# pipeline/config_ipd.yaml
+seed: 42
+
+# Models: 3 Qwen2.5 sizes + 3 Llama sizes
+models:
+  - family: "qwen2.5"
+    alias: "qwen2.5"
+    task_type: "causal"
+    sizes:
+      - id: "Qwen/Qwen2.5-0.5B-Instruct"   # small (0.5B)
+        size_name: "0.5B"
+      - id: "Qwen/Qwen2.5-3B-Instruct"     # medium (3B)
+        size_name: "3B"
+      - id: "Qwen/Qwen2.5-7B-Instruct"     # large (7B)
+        size_name: "7B"
+
+  - family: "llama3"
+    alias: "llama3"
+    task_type: "causal"
+    sizes:
+      - id: "meta-llama/Llama-3.2-1B-Instruct"     # small (1B)
+        size_name: "1B"
+      - id: "meta-llama/Llama-3.2-3B-Instruct"     # medium (3B)
+        size_name: "3B"
+      - id: "meta-llama/Meta-Llama-3-8B-Instruct"  # large (8B)
+        size_name: "8B"
+
+# Prompts mapping: alias -> list of exactly 3 templates (each template should contain {history} and {you})
+prompts:
+  qwen2.5:
+    - "You are {you}. Given the interaction history:\n{history}\nDecide your next action (C or D)."
+    - "As {you}, respond to the previous rounds below:\n{history}\nPlease answer only with the single letter 'C' or 'D'."
+    - "History:\n{history}\nMake a single choice: C (cooperate) or D (defect). Reply with only the letter."
+  llama3:
+    - "You are {you}. Below is the history of the game:\n{history}\nChoose your next move: C or D."
+    - "As {you}, given the previous rounds:\n{history}\nReply with a single character: 'C' or 'D'."
+    - "Given the history:\n{history}\nWhat is your next action? Return only C or D."
+
+# Baseline strategies to test (we'll support TFT and 2TFT/2T4T)
+base_strategies_list:
+  - "TFT"
+  - "2TFT"   # two-tits-for-tat
+  # "2T4T" is accepted as an alias in code (maps to same function)
+
+# Metrics to compute
+metrics:
+  - "trust"
+  - "cooperation_streak"
+
+run:
+  rounds: 40
+  prompts_per_model: 3
+  max_new_tokens: 16
+
+out_path: "pipeline/ipd_results_qwen_llama.json"
