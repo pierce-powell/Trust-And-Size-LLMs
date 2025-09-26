@@ -5,14 +5,20 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-# No --gres line (CPU-only)
+# no --gres (CPU-only test)
 
-# activate environment
-source venv/bin/activate
+# (Optional) load a python module if your site requires it:
+# module load python/3.10
 
-# Hugging Face auth & cache (set your token)
-export HF_TOKEN="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"
-export HF_HOME="/lustre/fs1/$USER/hf_home"
+# Activate the venv we created interactively (adjust path if you placed venv elsewhere)
+source $HOME/Trust-And-Size-LLMs/venv/bin/activate
+
+# Ensure Python inside venv is used
+echo "Using python: $(which python) $(python --version)"
+
+# Hugging Face auth & cache (use HOME-based cache so no permission issues)
+export HF_TOKEN="hf_xxxYOURTOKENxxx"
+export HF_HOME="$HOME/hf_home"
 export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 mkdir -p "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
@@ -20,5 +26,5 @@ mkdir -p "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
 # make git single-threaded (avoid login-node thread issues)
 git config --global pack.threads "1"
 
-# run the test config you added earlier
-python pipeline/main.py --config pipeline/test_ipd.yaml
+# Run the test config (use python3 -u for unbuffered output)
+python3 -u pipeline/main.py --config pipeline/test_ipd.yaml
