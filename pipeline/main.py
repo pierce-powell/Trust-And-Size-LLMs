@@ -26,6 +26,7 @@ def make_llm_agent_from_instance(inst, prompt_templates, max_new_tokens=32):
                     device=inst.get("device", None), max_new_tokens=max_new_tokens)
 
 def main():
+    print("main called.")
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default="pipeline/config_ipd.yaml")
     args = parser.parse_args()
@@ -156,3 +157,6 @@ def main():
     with open(out_path, 'w') as f:
         json.dump(out_obj, f, indent=2)
     print("Saved results to", out_path)
+
+if __name__ == "__main__":
+    main()
