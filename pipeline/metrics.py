@@ -17,6 +17,25 @@ class Accuracy(Metric):
         acc = sum(p==r for p,r in zip(predictions, references)) / max(1, len(predictions))
         return {"accuracy": float(acc)}
 
+
+class CooperationStreak(Metric):
+    """
+    Computes the longest streak of cooperation by target player across matches.
+    """
+    def compute(self, match_results: List[Dict], target_player_index: int = 0):
+        longest = 0
+        for res in match_results:
+            history = res["history"]
+            current = 0
+            for (a1,a2) in history:
+                move = a1 if target_player_index == 0 else a2
+                if move == "C":
+                    current += 1
+                    longest = max(longest, current)
+                else:
+                    current = 0
+        return {"cooperation_streak": float(longest)}
+
 class TrustMetric(Metric):
     """
     Computes simple trust metrics given match result dictionaries returned by IPDGame.play()
@@ -48,3 +67,25 @@ class TrustMetric(Metric):
         cooperation_rate = (total_coops / max(1, total_rounds))
         reciprocity_rate = (coop_and_opp_coop / max(1, coop_rounds)) if coop_rounds>0 else 0.0
         return {"cooperation_rate": cooperation_rate, "reciprocity_rate": reciprocity_rate}
+
+
+def get_metrics_by_names(names):
+    """
+    Given a list of metric names, return a list of instantiated metric objects.
+    Supported: "exact_match", "accuracy", "trust"
+    """
+    mapping = {
+        "exact_match": ExactMatch,
+        "accuracy": Accuracy,
+        "trust": TrustMetric,
+        "cooperation_streak": CooperationStreak,
+    }
+    metrics = []
+    for n in names:
+        n_lower = n.lower()
+        if n_lower not in mapping:
+            raise ValueError(f"Unknown metric name: {n}")
+        metrics.append(mapping[n_lower]())
+    return metrics
+
+
