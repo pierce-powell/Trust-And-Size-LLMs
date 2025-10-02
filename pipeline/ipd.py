@@ -56,8 +56,6 @@ BASE_STRATEGIES = {
     "ALLD": always_defect,
     "TFT": tit_for_tat,
     "2TFT": two_tits_for_tat,
-    "2T4T": two_tits_for_tat,
-    "RANDOM": random_strategy
 }
 
 
