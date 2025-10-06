@@ -3,6 +3,4 @@ transformers>=4.30.0
 datasets>=2.13.0
 pyyaml
 tqdm
-# Optional metrics:
-sacrebleu
-rouge_score
+protobuf

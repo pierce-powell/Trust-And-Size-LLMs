@@ -12,16 +12,17 @@ models:
     alias: "llama3"
     task_type: "causal"
     sizes:
-      - id: "meta-llama/Llama-3.2-1B-Instruct"
-        size_name: "1B"
+      - id: "openlm-research/open_llama_3b"
+        size_name: "3B"
+
 
 prompts:
   qwen2.5:
     - "You are playing the iterated prisioners dilema. History:\n{history}\nAs {you}, choose C or D."
     - "You are playing the iterated prisioners dilema. Given past rounds:\n{history}\nReply only with C or D."
   llama3:
-    - "You are playing the iterated prisioners dilema.  Game so far:\n{history}\nAs {you}, reply C or D."
-    - " You are playing the iterated prisioners dilema. Rounds:\n{history}\nChoose C or D, no other text."
+    - "You are playing the iterated prisioners dilema. History:\n{history}\nAs {you}, choose C or D."
+    - "You are playing the iterated prisioners dilema. Given past rounds:\n{history}\nReply only with C or D."
 
 base_strategies_list:
   - "TFT"

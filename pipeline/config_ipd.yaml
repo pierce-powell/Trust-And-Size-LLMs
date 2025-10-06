@@ -1,7 +1,7 @@
 # pipeline/config_ipd.yaml
 seed: 42
 
-# Models: 3 Qwen2.5 sizes + 3 Llama sizes
+# Models: 3 Qwen2.5 sizes + 3 Llama sizes we will want to switch to actually large models I would assume. 
 models:
   - family: "qwen2.5"
     alias: "qwen2.5"
@@ -26,6 +26,7 @@ models:
         size_name: "8B"
 
 # Prompts mapping: alias -> list of exactly 3 templates (each template should contain {history} and {you})
+# We will want to update these to our actual prompts. 
 prompts:
   qwen2.5:
     - "You are {you}. Given the interaction history:\n{history}\nDecide your next action (C or D)."
