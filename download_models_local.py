@@ -2,6 +2,7 @@ import argparse
 import yaml
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
+import json
 
 def download_from_config(config_path: str, cache_dir: str = "./hf_cache"):
     # Load config YAML
@@ -30,12 +31,50 @@ def download_from_config(config_path: str, cache_dir: str = "./hf_cache"):
                 print(f"Skipping {alias} {size_name}: no id provided.")
                 continue
 
-            print(f"Downloading {alias} ({size_name}) -> {model_id}")
+            print(f"\n=== Downloading {alias} ({size_name}) -> {model_id} ===")
             try:
-                AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
-                AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_dir)
+                # First attempt with trust_remote_code=True (to fetch custom files)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_id,
+                    cache_dir=cache_dir,
+                    trust_remote_code=True
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_id,
+                    cache_dir=cache_dir,
+                    trust_remote_code=True
+                )
+                print(f"Successfully downloaded with trust_remote_code=True")
             except Exception as e:
-                print(f"Failed to download {alias} ({size_name}): {e}")
+                print(f" trust_remote_code=True failed: {e}")
+                print(f"Retrying without it (for standard models)...")
+                try:
+                    tokenizer = AutoTokenizer.from_pretrained(
+                        model_id,
+                        cache_dir=cache_dir,
+                        trust_remote_code=False
+                    )
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_id,
+                        cache_dir=cache_dir,
+                        trust_remote_code=False
+                    )
+                    print("Successfully downloaded standard model")
+                except Exception as e2:
+                    print(f"Failed both attempts for {alias} ({size_name}): {e2}")
+                    continue
+
+            # Save metadata for record-keeping (optional)
+            model_dir = os.path.join(cache_dir, model_id.replace("/", "--"))
+            meta_path = os.path.join(model_dir, "download_meta.json")
+            os.makedirs(model_dir, exist_ok=True)
+            with open(meta_path, "w") as f:
+                json.dump({
+                    "model_id": model_id,
+                    "alias": alias,
+                    "size": size_name,
+                    "uses_remote_code": "trust_remote_code=True" in str(tokenizer.__class__)
+                }, f, indent=2)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download HuggingFace models listed in a config YAML.")

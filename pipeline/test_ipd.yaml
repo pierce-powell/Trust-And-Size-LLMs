@@ -1,13 +1,6 @@
 seed: 42
 
 models:
-  - family: "qwen2.5"
-    alias: "qwen2.5"
-    task_type: "causal"
-    sizes:
-      - id: "Qwen/Qwen2.5-0.5B-Instruct"
-        size_name: "0.5B"
-
   - family: "llama3"
     alias: "llama3"
     task_type: "causal"
