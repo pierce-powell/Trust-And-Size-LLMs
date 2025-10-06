@@ -11,20 +11,15 @@ source venv/bin/activate
 cd $SLURM_SUBMIT_DIR
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
-# --- Hugging Face local cache configuration ---
-# Use your uploaded cache (already contains model files)
-export HF_HOME="$HOME/hf_home"
-export TRANSFORMERS_CACHE="$HOME/hf_cache"
+# --- Point Transformers directly to your cache ---
+export TRANSFORMERS_CACHE="$HOME/hf_cache/hf_cache"
 mkdir -p "$TRANSFORMERS_CACHE"
 
-# (Optional) disable parallelism for safety on SLURM
-export HF_HUB_DISABLE_SYMLINKS_WARNING=1
+# Offline mode: forcefully disable network access
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
+export HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
-# --- Run your job ---
-echo "Launching pipeline..."
-echo "Working directory: $(pwd)"
 echo "Using cache: $TRANSFORMERS_CACHE"
 
 python -m pipeline.main --config pipeline/test_ipd.yaml

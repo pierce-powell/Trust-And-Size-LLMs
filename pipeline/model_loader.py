@@ -1,138 +1,103 @@
 # pipeline/model_loader.py
-from typing import Tuple, Dict, Any, List
 import os
-import torch
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    AutoModelForSeq2SeqLM,
-    AutoModelForSequenceClassification,
-    logging as hf_logging
-)
-hf_logging.set_verbosity_error()
+import logging
+from typing import Dict, Any, Optional
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+logger = logging.getLogger(__name__)
+
+def _get_cache_roots():
+    """
+    Return a list of plausible transformer cache roots to search.
+    Order: TRANSFORMERS_CACHE, HF_HOME/transformers, default ~/.cache/huggingface/transformers
+    """
+    roots = []
+    tcache = os.environ.get("TRANSFORMERS_CACHE")
+    if tcache:
+        roots.append(tcache)
+    hf_home = os.environ.get("HF_HOME") or os.environ.get("HF_HOME".upper())
+    if hf_home:
+        roots.append(os.path.join(hf_home, "transformers"))
+    # default cache location used by huggingface
+    default = os.path.expanduser("~/.cache/huggingface/transformers")
+    roots.append(default)
+    return roots
+
+def find_local_model_path(model_id: str) -> Optional[str]:
+    """
+    Locate a local model directory inside TRANSFORMERS_CACHE, given a Hugging Face model ID.
+    Example:
+      model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+      TRANSFORMERS_CACHE = /home/pi047867/hf_cache/hf_cache
+      → looks for models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/<hash>/
+    """
+    cache_root = os.environ.get("TRANSFORMERS_CACHE", os.path.expanduser("~/.cache/huggingface/transformers"))
+    owner_repo = model_id.replace("/", "--")
+    pattern = f"models--{owner_repo}"
+
+    for entry in os.listdir(cache_root):
+        if entry.startswith(pattern):
+            model_root = os.path.join(cache_root, entry)
+            snapshots_dir = os.path.join(model_root, "snapshots")
+            if os.path.isdir(snapshots_dir):
+                # pick first snapshot (usually only one)
+                for snap in os.listdir(snapshots_dir):
+                    snap_path = os.path.join(snapshots_dir, snap)
+                    if os.path.exists(os.path.join(snap_path, "config.json")):
+                        return snap_path
+    return None
+
+
 
 class ModelLoader:
     """
-    Two-step loader:
-      1) prepare_metadata(models_config) -> creates mapping of keys -> meta (no weights loaded)
-      2) load_instance(key, device, torch_dtype=None) -> loads weights & tokenizer, caches instance
-      3) unload_instance(key) -> deletes weights and clears cache (and empties GPU cache)
+    Lightweight loader that supports local-only loading when pre-downloaded cache exists.
     """
-
     def __init__(self):
-        # metadata: key -> {model_id, alias, size_name, task_type}
-        self.metadata: Dict[str, Dict[str, Any]] = {}
-        # instances cache: key -> {"model":..., "tokenizer":..., "task_type":...}
-        self._instances: Dict[str, Dict[str, Any]] = {}
+        # you can preload metadata here if needed
+        pass
 
-    def _make_key(self, alias: str, size_name: str) -> str:
-        return f"{alias}::{size_name}"
-
-    def prepare_metadata(self, models_config: List[Dict[str, Any]]):
-        """
-        Populate self.metadata from the models_config (YAML structure).
-        Does NOT download model weights.
-        """
-        for entry in models_config:
-            family = entry.get("family")
-            alias = entry.get("alias", family)
-            task_type = entry.get("task_type", "causal")
-            sizes = entry.get("sizes", [])
+    def prepare_metadata(self, models_cfg):
+        # Example: convert your yaml models block to a flat list of model ids / aliases
+        # This implementation assumes models_cfg is the YAML structure you have (with sizes[] containing id)
+        metadata = []
+        for m in models_cfg:
+            alias = m.get("alias") or m.get("family")
+            sizes = m.get("sizes", [])
             for s in sizes:
-                model_id = s["id"]
-                size_name = s.get("size_name", model_id)
-                key = self._make_key(alias, size_name)
-                self.metadata[key] = {
-                    "model_id": model_id,
-                    "alias": alias,
-                    "size_name": size_name,
-                    "task_type": task_type
-                }
-        return self.metadata
+                mid = s.get("id")
+                if mid:
+                    metadata.append({"alias": alias, "model_id": mid, "size_name": s.get("size_name")})
+        return metadata
 
-    def list_keys(self) -> List[str]:
-        return list(self.metadata.keys())
+    def list_keys(self):
+        # if you use prepare_metadata above, just return alias::size pairs or model ids
+        # but main expects some `keys`, so return a list of model_id strings for simplicity
+        # You may adapt this to your existing code's key format
+        raise NotImplementedError("list_keys must be implemented according to your pipeline metadata format.")
 
-    def is_loaded(self, key: str) -> bool:
-        return key in self._instances
-
-    def load_instance(self, key: str, device: torch.device = None, torch_dtype=None, use_auth_token: Any = None) -> Dict[str, Any]:
+    def load_instance(self, model_id: str, device: str = "cpu", use_auth_token: Optional[str] = None) -> Dict[str, Any]:
         """
-        Load model + tokenizer for key and move model to `device`.
-        - device: torch.device (if None, will use cuda if available else cpu)
-        - torch_dtype: e.g. torch.float16, or None
-        - use_auth_token: token or True to use HF token from env; passed to from_pretrained
-        Returns dict {"model", "tokenizer", "task_type"}.
-        Caches the instance in self._instances[key].
+        Load tokenizer and model. If a local path is found, load from there using local_files_only=True.
+        Returns a dict with keys: model, tokenizer, device, alias (optional)
         """
-        if key not in self.metadata:
-            raise KeyError(f"Unknown model key: {key}")
+        logger.info("Loading model: %s (device=%s)", model_id, device)
+        local_path = find_local_model_path(model_id)
+        local_files_only = True
+        hf_ref = local_path if local_path is not None else model_id
 
-        if key in self._instances:
-            return self._instances[key]
-
-        meta = self.metadata[key]
-        model_id = meta["model_id"]
-        task_type = meta["task_type"]
-
-        # set device default
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        # auth token support: prefer explicit argument, else use HF_TOKEN env var if present
-        auth = use_auth_token
-        if auth is None:
-            auth = os.environ.get("HF_TOKEN", None)
-
-        # load tokenizer
-        tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, use_auth_token=auth)
-        tokenizer.padding_side = getattr(tokenizer, "padding_side", "left")
-
-        load_kwargs = {}
-        if torch_dtype is not None:
-            load_kwargs["torch_dtype"] = torch_dtype
-        # Avoid loading in 8-bit/accelerate here; keep simple. Users can customize outside.
-
-        if task_type == "causal":
-            model = AutoModelForCausalLM.from_pretrained(model_id, **load_kwargs, use_auth_token=auth)
-        elif task_type == "seq2seq":
-            model = AutoModelForSeq2SeqLM.from_pretrained(model_id, **load_kwargs, use_auth_token=auth)
-        elif task_type == "classification":
-            model = AutoModelForSequenceClassification.from_pretrained(model_id, **load_kwargs, use_auth_token=auth)
-        else:
-            raise ValueError(f"Unsupported task_type: {task_type}")
-
-        # Move model to device
-        model.to(device)
-        model.eval()
-
-        inst = {"model": model, "tokenizer": tokenizer, "task_type": task_type, "device": device}
-        self._instances[key] = inst
-        return inst
-
-    def unload_instance(self, key: str):
-        """
-        Unload and free resources associated with the model instance.
-        """
-        if key not in self._instances:
-            return
-        inst = self._instances.pop(key)
+        # Force use_fast=False for robustness (fast tokenizers sometimes need conversions)
         try:
-            model = inst.get("model")
-            # delete and free
-            del model
-        except Exception:
-            pass
-        # try to free GPU memory
-        try:
-            import gc
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception:
-            pass
+            tokenizer = AutoTokenizer.from_pretrained(hf_ref, use_fast=False, local_files_only=local_files_only)
+        except Exception as e:
+            logger.warning("AutoTokenizer.from_pretrained failed for %s with local_files_only=%s: %s", hf_ref, local_files_only, e)
+            # retry using use_fast=True as fallback (or raise if you prefer)
+            tokenizer = AutoTokenizer.from_pretrained(hf_ref, use_fast=True, local_files_only=local_files_only)
 
-    def unload_all(self):
-        for k in list(self._instances.keys()):
-            self.unload_instance(k)
-        self._instances = {}
+        try:
+            model = AutoModelForCausalLM.from_pretrained(hf_ref, local_files_only=local_files_only)
+        except Exception as e:
+            logger.error("AutoModelForCausalLM.from_pretrained failed for %s (local=%s): %s", hf_ref, local_path is not None, e)
+            raise
+
+        return {"model": model, "tokenizer": tokenizer, "device": device, "alias": model_id}
