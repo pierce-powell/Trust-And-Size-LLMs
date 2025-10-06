@@ -6,14 +6,28 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=24G
 
+# --- Environment setup ---
 source venv/bin/activate
+cd $SLURM_SUBMIT_DIR
+export PYTHONPATH=$(pwd):$PYTHONPATH
 
-# Hugging Face auth + cache
-export HF_TOKEN="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"
-export HF_HOME="/lustre/fs1/$USER/hf_home"
-export TRANSFORMERS_CACHE="$HF_HOME/transformers"
-export HF_DATASETS_CACHE="$HF_HOME/datasets"
-mkdir -p "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE"
+# --- Hugging Face local cache configuration ---
+# Use your uploaded cache (already contains model files)
+export HF_HOME="$HOME/hf_home"
+export TRANSFORMERS_CACHE="$HOME/hf_cache"
+mkdir -p "$TRANSFORMERS_CACHE"
 
-# Run the test config
-python pipeline/main.py --config pipeline/test_ipd.yaml
+# (Optional) disable parallelism for safety on SLURM
+export HF_HUB_DISABLE_SYMLINKS_WARNING=1
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+
+# --- Run your job ---
+echo "Launching pipeline..."
+echo "Working directory: $(pwd)"
+echo "Using cache: $TRANSFORMERS_CACHE"
+
+python -m pipeline.main --config pipeline/test_ipd.yaml
+
+echo "====== sbatch job end ======"
+date

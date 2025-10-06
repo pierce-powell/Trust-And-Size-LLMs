@@ -1,0 +1,46 @@
+import argparse
+import yaml
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import os
+
+def download_from_config(config_path: str, cache_dir: str = "./hf_cache"):
+    # Load config YAML
+    with open(config_path, "r") as f:
+        cfg = yaml.safe_load(f)
+
+    models = cfg.get("models", [])
+    if not models:
+        print("No models found in config.")
+        return
+
+    os.makedirs(cache_dir, exist_ok=True)
+
+    for model_cfg in models:
+        family = model_cfg.get("family", "unknown")
+        alias = model_cfg.get("alias", family)
+        sizes = model_cfg.get("sizes", [])
+        if not sizes:
+            print(f"Skipping {alias}: no sizes defined.")
+            continue
+
+        for size in sizes:
+            model_id = size.get("id")
+            size_name = size.get("size_name", "unknown")
+            if not model_id:
+                print(f"Skipping {alias} {size_name}: no id provided.")
+                continue
+
+            print(f"Downloading {alias} ({size_name}) -> {model_id}")
+            try:
+                AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
+                AutoModelForCausalLM.from_pretrained(model_id, cache_dir=cache_dir)
+            except Exception as e:
+                print(f"Failed to download {alias} ({size_name}): {e}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Download HuggingFace models listed in a config YAML.")
+    parser.add_argument("--config", type=str, required=True, help="Path to pipeline YAML config (e.g. pipeline/test_ipd.yaml)")
+    parser.add_argument("--cache_dir", type=str, default="./hf_cache", help="Where to cache models locally")
+    args = parser.parse_args()
+
+    download_from_config(args.config, args.cache_dir)
