@@ -11,6 +11,13 @@ source venv/bin/activate
 cd $SLURM_SUBMIT_DIR
 export PYTHONPATH=$(pwd):$PYTHONPATH
 
+echo "Which python will be used in this job:"
+which python
+python --version
+
+# Use explicit python path from the venv to avoid ambiguity
+VENV_PYTHON="$SLURM_SUBMIT_DIR/venv/bin/python"
+
 # --- Point Transformers directly to your cache ---
 export TRANSFORMERS_CACHE="$HOME/hf_cache/hf_cache"
 mkdir -p "$TRANSFORMERS_CACHE"
@@ -22,7 +29,8 @@ export HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
 echo "Using cache: $TRANSFORMERS_CACHE"
 
-python -m pipeline.main --config pipeline/test_ipd.yaml
+# run using explicit venv python
+$VENV_PYTHON -m pipeline.main --config pipeline/test_ipd.yaml
 
 echo "====== sbatch job end ======"
 date
