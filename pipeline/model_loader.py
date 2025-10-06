@@ -1,35 +1,11 @@
-# pipeline/model_loader.py
 import os
-import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from transformers import AutoTokenizer, AutoModelForCausalLM
-
-logger = logging.getLogger(__name__)
-
-def _get_cache_roots():
-    """
-    Return a list of plausible transformer cache roots to search.
-    Order: TRANSFORMERS_CACHE, HF_HOME/transformers, default ~/.cache/huggingface/transformers
-    """
-    roots = []
-    tcache = os.environ.get("TRANSFORMERS_CACHE")
-    if tcache:
-        roots.append(tcache)
-    hf_home = os.environ.get("HF_HOME") or os.environ.get("HF_HOME".upper())
-    if hf_home:
-        roots.append(os.path.join(hf_home, "transformers"))
-    # default cache location used by huggingface
-    default = os.path.expanduser("~/.cache/huggingface/transformers")
-    roots.append(default)
-    return roots
 
 def find_local_model_path(model_id: str) -> Optional[str]:
     """
-    Locate a local model directory inside TRANSFORMERS_CACHE, given a Hugging Face model ID.
-    Example:
-      model_id = "Qwen/Qwen2.5-0.5B-Instruct"
-      TRANSFORMERS_CACHE = /home/pi047867/hf_cache/hf_cache
-      → looks for models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/<hash>/
+    Locate local snapshot path for a model_id under TRANSFORMERS_CACHE.
+    Example: models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/<hash>/
     """
     cache_root = os.environ.get("TRANSFORMERS_CACHE", os.path.expanduser("~/.cache/huggingface/transformers"))
     owner_repo = model_id.replace("/", "--")
@@ -40,7 +16,6 @@ def find_local_model_path(model_id: str) -> Optional[str]:
             model_root = os.path.join(cache_root, entry)
             snapshots_dir = os.path.join(model_root, "snapshots")
             if os.path.isdir(snapshots_dir):
-                # pick first snapshot (usually only one)
                 for snap in os.listdir(snapshots_dir):
                     snap_path = os.path.join(snapshots_dir, snap)
                     if os.path.exists(os.path.join(snap_path, "config.json")):
@@ -48,56 +23,50 @@ def find_local_model_path(model_id: str) -> Optional[str]:
     return None
 
 
-
 class ModelLoader:
-    """
-    Lightweight loader that supports local-only loading when pre-downloaded cache exists.
-    """
     def __init__(self):
-        # you can preload metadata here if needed
-        pass
+        self.models_meta = {}
 
-    def prepare_metadata(self, models_cfg):
-        # Example: convert your yaml models block to a flat list of model ids / aliases
-        # This implementation assumes models_cfg is the YAML structure you have (with sizes[] containing id)
-        metadata = []
+    def prepare_metadata(self, models_cfg: List[Dict[str, Any]]):
+        """
+        Parse the YAML 'models:' section into internal metadata.
+        """
         for m in models_cfg:
-            alias = m.get("alias") or m.get("family")
-            sizes = m.get("sizes", [])
-            for s in sizes:
-                mid = s.get("id")
-                if mid:
-                    metadata.append({"alias": alias, "model_id": mid, "size_name": s.get("size_name")})
-        return metadata
+            alias = m.get("alias", m["family"])
+            for s in m.get("sizes", []):
+                size = s.get("size_name")
+                model_id = s.get("id")
+                key = f"{alias}::{size}"
+                self.models_meta[key] = {
+                    "alias": alias,
+                    "size": size,
+                    "model_id": model_id,
+                    "task_type": m.get("task_type", "causal")
+                }
+        return self.models_meta
 
-    def list_keys(self):
-        # if you use prepare_metadata above, just return alias::size pairs or model ids
-        # but main expects some `keys`, so return a list of model_id strings for simplicity
-        # You may adapt this to your existing code's key format
-        raise NotImplementedError("list_keys must be implemented according to your pipeline metadata format.")
+    def list_keys(self) -> List[str]:
+        """Return all keys in deterministic order."""
+        return list(self.models_meta.keys())
 
-    def load_instance(self, model_id: str, device: str = "cpu", use_auth_token: Optional[str] = None) -> Dict[str, Any]:
+    def load_instance(self, key: str, device: str = "cpu", use_auth_token: Optional[str] = None) -> Dict[str, Any]:
         """
-        Load tokenizer and model. If a local path is found, load from there using local_files_only=True.
-        Returns a dict with keys: model, tokenizer, device, alias (optional)
+        Given a key like 'qwen2.5::0.5B', load the model/tokenizer offline if possible.
         """
-        logger.info("Loading model: %s (device=%s)", model_id, device)
+        meta = self.models_meta.get(key)
+        if meta is None:
+            raise ValueError(f"Unknown model key: {key}")
+
+        model_id = meta["model_id"]
         local_path = find_local_model_path(model_id)
-        local_files_only = True
-        hf_ref = local_path if local_path is not None else model_id
+        if not local_path:
+            raise FileNotFoundError(f"Could not find local model path for {model_id} under TRANSFORMERS_CACHE.")
 
-        # Force use_fast=False for robustness (fast tokenizers sometimes need conversions)
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(hf_ref, use_fast=False, local_files_only=local_files_only)
-        except Exception as e:
-            logger.warning("AutoTokenizer.from_pretrained failed for %s with local_files_only=%s: %s", hf_ref, local_files_only, e)
-            # retry using use_fast=True as fallback (or raise if you prefer)
-            tokenizer = AutoTokenizer.from_pretrained(hf_ref, use_fast=True, local_files_only=local_files_only)
+        print(f"Loading {key} from {local_path}")
+        tokenizer = AutoTokenizer.from_pretrained(local_path, use_fast=False, local_files_only=True)
+        model = AutoModelForCausalLM.from_pretrained(local_path, local_files_only=True)
+        return {"model": model, "tokenizer": tokenizer, "device": device, "alias": meta["alias"]}
 
-        try:
-            model = AutoModelForCausalLM.from_pretrained(hf_ref, local_files_only=local_files_only)
-        except Exception as e:
-            logger.error("AutoModelForCausalLM.from_pretrained failed for %s (local=%s): %s", hf_ref, local_path is not None, e)
-            raise
-
-        return {"model": model, "tokenizer": tokenizer, "device": device, "alias": model_id}
+    def unload_instance(self, key: str):
+        """Unload model from memory (no-op for CPU; could add torch.cuda.empty_cache() if using GPU)."""
+        pass
