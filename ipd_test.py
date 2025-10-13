@@ -136,6 +136,7 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
         total_heuristic_score = 0
 
         for r in range(1, rounds + 1):
+            print("Starting round ", round)
             prompt = build_prompt(history_model, history_heuristic)
             # score probabilities for Cooperate/Defect
             probs = score_choice_probs(model, tokenizer, prompt, choices=CHOICES, device=device)
@@ -182,6 +183,7 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
 
 # --- Entrypoint -------------------------------------------------------------
 def main():
+    print("starting script")
     p = argparse.ArgumentParser()
     p.add_argument("--out", default="ipd_results.csv")
     p.add_argument("--rounds", type=int, default=20)
@@ -199,6 +201,8 @@ def main():
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    print("done with presetup")
+
     out_rows = []
     for model_name, model_path in model_registry.items():
         print(f"Loading model {model_name} from {model_path} on {device} ...")
@@ -209,6 +213,7 @@ def main():
         model.eval()
         # play
         play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=args.rounds, out_rows=out_rows)
+        print("all done with model ", model_name)
 
     # write CSV
     fieldnames = ["timestamp","model","heuristic","round","coop_prob","model_choice","coop_streak","model_payoff","heuristic_payoff","relative_payoff","history_model","history_heuristic"]
