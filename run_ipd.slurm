@@ -22,4 +22,4 @@ export HF_DATASETS_OFFLINE=1
 pip install -U transformers torch --no-cache-dir
 
 # Run
-python ~/ipd_test.py --out ~/ipd_ipd_results.csv --rounds 30
+python /home/pi047867/Trust-And-Size-LLMs/ipd_test.py --out ~/ipd_ipd_results.csv --rounds 30
