@@ -194,7 +194,7 @@ def main():
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
         "QWEN2.5-0.5B": str(base / "models--Qwen--Qwen2.5-0.5B-Instruct"),
-        "OpenLLaMA-3B": str(base / "models--openlm-research--open_llama_3b),
+        "OpenLLaMA-3B": str(base / "models--openlm-research--open_llama_3b"),
     }
 
     device = args.device
