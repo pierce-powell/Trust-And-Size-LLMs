@@ -193,8 +193,8 @@ def main():
     # Models you listed in your home directory (adjust if necessary)
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
-        "QWEN2.5-0.5B": str(base / "Qwen--Qwen2.5-0.5B-Instruct"),
-        "OpenLLaMA-3B": str(base / "openlm-research--open_llama_3b"),
+        "QWEN2.5-0.5B": str(base / "models--Qwen--Qwen2.5-0.5B-Instruct"),
+        "OpenLLaMA-3B": str(base / "models--openlm-research--open_llama_3b),
     }
 
     device = args.device
@@ -208,9 +208,13 @@ def main():
         print(f"Loading model {model_name} from {model_path} on {device} ...")
         # tokenizer + model (trust_remote_code True for QWEN; harmless for local)
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+        print("tokenizer retrieved")
         model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.float16 if device=="cuda" else torch.float32)
+        print("Model done loading!")
         model.to(device)
+        print("casted to ", device)
         model.eval()
+        print("eval done")
         # play
         play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=args.rounds, out_rows=out_rows)
         print("all done with model ", model_name)
