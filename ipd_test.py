@@ -193,8 +193,7 @@ def main():
     # Models you listed in your home directory (adjust if necessary)
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
-        "QWEN2.5-0.5B": str(base / "models--Qwen--Qwen2.5-0.5B-Instruct"),
-        "OpenLLaMA-3B": str(base / "models--openlm-research--open_llama_3b"),
+        "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
     }
 
     device = args.device
