@@ -21,12 +21,6 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# --- Utilities / Settings ---------------------------------------------------
-# Limit threaded BLAS to avoid RLIMIT_NPROC problems on shared clusters
-os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("OMP_NUM_THREADS", "1")
-os.environ.setdefault("MKL_NUM_THREADS", "1")
-torch.set_num_threads(1)
 
 # Payoff matrix (classic-ish)
 # (model_action, heuristic_action): (model_payoff, heuristic_payoff)

@@ -13,10 +13,6 @@ module load python  # adjust version name if needed, e.g., python/3.11
 # Activate your venv
 source ~/qwen_env/bin/activate
 
-# Thread / process limits to avoid OpenBLAS RLIMIT_NPROC issues
-export OPENBLAS_NUM_THREADS=1
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
 # Also tell HF/transformers to avoid network (we're using local model folders)
 export HF_HOME=~/hf_cache
 export TRANSFORMERS_OFFLINE=1
