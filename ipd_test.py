@@ -193,11 +193,14 @@ def main():
     # Models you listed in your home directory (adjust if necessary)
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
-        "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
-        "QWEN2.5-7B": str(base / "Qwen2.5-7B"),
         "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
         "QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
+
+    """
+        "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
+        "QWEN2.5-7B": str(base / "Qwen2.5-7B"),
+    """
 
     device = args.device
     if device is None:
@@ -211,10 +214,10 @@ def main():
         # tokenizer + model (trust_remote_code True for QWEN; harmless for local)
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
         print("tokenizer retrieved")
-        model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, torch_dtype=torch.float16 if device=="cuda" else torch.float32)
+        model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, dtype="bfloat16", device_map="auto")
         print("Model done loading!")
-        model.to(device)
-        print("casted to ", device)
+        #model.to(device)
+        #print("casted to ", device)
         model.eval()
         print("eval done")
         # play
