@@ -3,7 +3,7 @@
 #SBATCH --output=ipd_test.%j.out
 #SBATCH --error=ipd_test.%j.err
 #SBATCH --time=02:00:00
-#SBATCH --partition=high-gpu        # or the specific partition name for H100s on your cluster
+#SBATCH --partition=highgpu        # or the specific partition name for H100s on your cluster
 #SBATCH --gres=gpu:2                  # Request 2 GPUs
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G                    # more RAM helps for large models
