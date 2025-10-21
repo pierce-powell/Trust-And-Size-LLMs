@@ -194,9 +194,9 @@ def main():
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
         "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
-        "QWEN2.5-7B": str(base / "QWEN2.5-7B"),
-        "QWEN2.5-32B": str(base / "QWEN2.5-32B"),
-        "QWEN2.5-72B": str(base / "QWEN2.5-72B"),
+        "QWEN2.5-7B": str(base / "Qwen2.5-7B"),
+        "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
+        "QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
 
     device = args.device
