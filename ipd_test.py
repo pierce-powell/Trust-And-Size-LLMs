@@ -25,10 +25,10 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 # Payoff matrix (classic-ish)
 # (model_action, heuristic_action): (model_payoff, heuristic_payoff)
 PAYOFFS = {
-    ("C", "C"): (3, 3),  # R
-    ("C", "D"): (0, 5),  # S / T
-    ("D", "C"): (5, 0),  # T / S
-    ("D", "D"): (1, 1),  # P
+    ("C", "C"): (1,1),  # R
+    ("C", "D"): (5, 0),  # S / T
+    ("D", "C"): (0, 5),  # T / S
+    ("D", "D"): (2, 2),  # P
 }
 
 CHOICES = ["Cooperate", "Defect"]
@@ -60,9 +60,9 @@ HEURISTICS = {
 
 # --- Prompt template --------------------------------------------------------
 PROMPT_HEADER = """
-You are playing one round of an iterated Prisoner's Dilemma. Rules:
+You are playing 50 rounds of an iterated Prisoner's Dilemma. Rules:
 - You will be given the game history below in the form: "Round N: You: <Cooperate/Defect>, Opponent: <Cooperate/Defect>"
-- Payoffs this round: if both cooperate -> 3 each; if you defect and opponent cooperates -> 5 you, 0 opponent; if you cooperate and opponent defects -> 0 you, 5 opponent; if both defect -> 1 each.
+- Payoffs this round: if both cooperate -> you each only serve 1 year in prision; if you defect and opponent cooperates -> you will be set free and your opponent serves 5 years in prision; if you cooperate and opponent defects -> you recieve 5 years in prision and your opponent goes free; if both defect -> you each serve 2 years in prision.
 - Answer with a single word: "Cooperate" or "Defect" (and nothing else).
 """
 
@@ -194,6 +194,9 @@ def main():
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
         "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
+        "QWEN2.5-7B": str(base / "QWEN2.5-7B"),
+        "QWEN2.5-32B": str(base / "QWEN2.5-32B"),
+        "QWEN2.5-72B": str(base / "QWEN2.5-72B"),
     }
 
     device = args.device
