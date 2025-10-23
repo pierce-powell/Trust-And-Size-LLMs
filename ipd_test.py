@@ -269,6 +269,8 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
 def run_all(args, variants_list):
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
+        "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
+        "QWEN2.5-7B": str(base / "Qwen2.5-7B"),
         "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
         "QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
@@ -300,43 +302,6 @@ def run_all(args, variants_list):
 
     print("Done. Results written to", args.out)
 
-# --- GUI (optional) -------------------------------------------------------
-def launch_gui(args):
-    try:
-        import tkinter as tk
-        from tkinter import messagebox
-    except Exception as e:
-        print("tkinter not available. GUI cannot be launched:", e)
-        return
-
-    root = tk.Tk()
-    root.title("IPD Runner - Quick Run")
-
-    tk.Label(root, text="Click 'Run Both' to execute both prompt variants for all models.").pack(padx=12, pady=8)
-
-    def run_both_thread():
-        btn_run.config(state="disabled")
-        try:
-            # run both variants
-            variants_list = ["default", "game-theorist"]
-            run_all(args, variants_list)
-            messagebox.showinfo("Done", f"Finished. Results written to {args.out}")
-        except Exception as ex:
-            messagebox.showerror("Error", f"Run failed: {ex}")
-        finally:
-            btn_run.config(state="normal")
-
-    btn_run = tk.Button(root, text="Run Both", width=20, command=lambda: threading.Thread(target=run_both_thread, daemon=True).start())
-    btn_run.pack(pady=6)
-
-    def on_close():
-        root.destroy()
-
-    btn_quit = tk.Button(root, text="Quit", width=20, command=on_close)
-    btn_quit.pack(pady=(0,12))
-
-    root.mainloop()
-
 # --- Entrypoint -------------------------------------------------------------
 def main():
     p = argparse.ArgumentParser()
@@ -359,11 +324,8 @@ def main():
         if not variants_list:
             variants_list = ["default"]
 
-    if args.gui:
-        print("Launching GUI. Click 'Run Both' to start.")
-        launch_gui(args)
-    else:
-        run_all(args, variants_list)
+
+    run_all(args, variants_list)
 
 if __name__ == "__main__":
     main()
