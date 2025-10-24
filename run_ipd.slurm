@@ -25,5 +25,5 @@ pip install accelerate
 
 
 # Run
-python ipd_test_prompted_v2.py --out results.csv --rounds 100 --variants default,game-theorist,COA
+python ipd_test.py --out results.csv --rounds 100 --variants default,game-theorist,COA
 
