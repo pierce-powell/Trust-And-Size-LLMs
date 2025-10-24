@@ -3,7 +3,8 @@
 #SBATCH --output=ipd_test.%j.out
 #SBATCH --error=ipd_test.%j.err
 #SBATCH --time=02:00:00     
-#SBATCH --gres=gpu:1                  # Request 2 GPUs
+#SBATCH --gres=gpu:2                  # Request 2 GPUs
+#SBATCH --constraint=H100
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G                    # more RAM helps for large models
 #SBATCH --nodes=1                     # ensure both GPUs are on the same node
@@ -25,4 +26,5 @@ pip install accelerate
 
 
 # Run
-python /home/pi047867/Trust-And-Size-LLMs/ipd_test.py --out ~/ipd_ipd_results.csv --rounds 30
+python ipd_test_prompted_v2.py --out results.csv --rounds 100 --variants default,game-theorist,COA
+

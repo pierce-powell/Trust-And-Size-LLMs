@@ -68,7 +68,7 @@ If A plays "Cooperate" and B plays "Cooperate", A collects 3 points and B collec
 
 They will play a total of 100 rounds of this game.
 
-Remember that a player’s objective is to get the highest possible number of points in the long run.
+Remember that a player's objective is to get the highest possible number of points in the long run.
 """
 
 # Game-theorist becomes a persona-only prompt (no instructions about strategy).
@@ -84,6 +84,25 @@ Remember to use only the following JSON format (and nothing else):
 - <ACTIONofA> must be exactly "Cooperate" or "Defect".
 - <YOURREASON> must be a brief, non-chain-of-thought justification (one or two short sentences).
 - Output only a single valid JSON object and nothing else.
+"""
+
+# --- New: meta prompt for COA ---------------------------------------------
+COA_PROMPT_TEMPLATE = """
+Two reasoning variants were consulted about the next action in the Iterated Prisoner's Dilemma.
+
+Variant 1 (Default) responded:
+{default_json}
+
+Variant 2 (Game-Theorist) responded:
+{theorist_json}
+
+Now, as an impartial arbiter, consider both responses carefully and decide the **final action** Player A should take.
+Respond ONLY in valid JSON format:
+
+{"action":<ACTIONofA>,"reason":<YOURREASON>}
+
+<ActionOfA> must be exactly "Cooperate" or "Defect".
+<YOURREASON> should briefly justify why this final choice is best considering both perspectives.
 """
 
 # --- Prompt builder ---------------------------------------------------------
@@ -104,7 +123,7 @@ def format_last_n_rounds(history_model, history_heuristic, n=5):
 def build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds=5):
     # system block
     system = DEFAULT_SYSTEM_PROMPT.strip()
-    prev_header = "[**Previous Rounds FOR COA**]\nThe history of the game in the last {} rounds is the following:\n".format(prompt_rounds)
+    prev_header = "\nThe history of the game in the last {} rounds is the following:\n".format(prompt_rounds)
     prev_text = format_last_n_rounds(history_model, history_heuristic, n=prompt_rounds)
 
     persona_section = ""
@@ -195,13 +214,24 @@ def get_model_json_decision(model, tokenizer, prompt, device="cpu", max_new_toke
         return "Defect", "(fallback: extracted keyword)"
     return None, None
 
-# --- Play match (per model × variant × heuristic) --------------------------
-def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20, seed=0, out_rows=None, variant="default", prompt_rounds=5):
+
+# --- Helper for safe incremental CSV write --------------------------------
+def append_rows_to_csv(filepath, fieldnames, rows):
+    file_exists = Path(filepath).exists()
+    with open(filepath, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not file_exists:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+# --- Modified play_iterated_pd --------------------------------------------
+def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20,
+                     seed=0, out_rows=None, variant="default", prompt_rounds=5):
     random.seed(seed)
     torch.manual_seed(seed)
 
     for heuristic_name, heuristic_fn in HEURISTICS.items():
-        # Each combination has its own independent histories (per your requirement)
         history_model = []
         history_heuristic = []
         coop_streak = 0
@@ -209,50 +239,64 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
         total_heuristic_score = 0
 
         for r in range(1, rounds + 1):
-            print(f"[{variant}] {model_name} vs {heuristic_name} — Starting round {r}")
-            prompt = build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds=prompt_rounds)
+            print(f"[seed={seed}] [{variant}] {model_name} vs {heuristic_name} — Round {r}")
 
-            # Try to get JSON decision from model (preferred)
-            model_action_word, model_reason = get_model_json_decision(model, tokenizer, prompt, device=device)
+            if variant in ("default", "game-theorist"):
+                # Normal variants
+                prompt = build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds)
+                model_action_word, model_reason = get_model_json_decision(model, tokenizer, prompt, device=device)
+            elif variant == "COA":
+                # Get default + theorist responses first
+                def_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
+                theo_prompt = build_prompt_variant("game-theorist", history_model, history_heuristic, prompt_rounds)
+                def_json_action, def_reason = get_model_json_decision(model, tokenizer, def_prompt, device=device)
+                theo_json_action, theo_reason = get_model_json_decision(model, tokenizer, theo_prompt, device=device)
 
-            # Score token probabilities for logging + fallback
-            probs = score_choice_probs(model, tokenizer, prompt, choices=CHOICES, device=device)
+                def_json = json.dumps({"action": def_json_action, "reason": def_reason})
+                theo_json = json.dumps({"action": theo_json_action, "reason": theo_reason})
+
+                # Now feed both into meta prompt
+                coa_prompt = COA_PROMPT_TEMPLATE.format(
+                    default_json=def_json,
+                    theorist_json=theo_json
+                )
+                model_action_word, model_reason = get_model_json_decision(model, tokenizer, coa_prompt, device=device)
+            else:
+                raise ValueError(f"Unknown variant: {variant}")
+
+            # Score probabilities for logging
+            base_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
+            probs = score_choice_probs(model, tokenizer, base_prompt, choices=CHOICES, device=device)
             coop_prob = probs.get("Cooperate", 0.0)
 
+            # Fallback if model_action_word is None
             if model_action_word is None:
-                # fallback: choose argmax by token scoring
                 model_action_word = max(probs.items(), key=lambda kv: kv[1])[0]
                 if model_reason is None:
-                    model_reason = "(fallback: chosen by token scoring)"
+                    model_reason = "(fallback: token scoring)"
 
-            model_choice = CHOICE_SHORT[model_action_word]  # 'C' or 'D'
-
-            # Heuristic's action based on its own history
+            model_choice = CHOICE_SHORT[model_action_word]
             heur_action = heuristic_fn(history_model, history_heuristic)
 
-            # Payoffs (uses short keys)
             model_pay, heur_pay = PAYOFFS[(model_choice, heur_action)]
             total_model_score += model_pay
             total_heuristic_score += heur_pay
             rel_pay = model_pay - heur_pay
+            coop_streak = coop_streak + 1 if model_choice == "C" else 0
 
-            # update streak and histories
-            if model_choice == "C":
-                coop_streak += 1
-            else:
-                coop_streak = 0
             history_model.append(model_choice)
             history_heuristic.append(heur_action)
 
             row = {
                 "timestamp": time.time(),
+                "seed": seed,
                 "model": model_name,
                 "variant": variant,
                 "heuristic": heuristic_name,
                 "round": r,
                 "coop_prob": coop_prob,
                 "model_choice": model_choice,
-                "model_reason": model_reason if model_reason is not None else "",
+                "model_reason": model_reason or "",
                 "coop_streak": coop_streak,
                 "model_payoff": model_pay,
                 "heuristic_payoff": heur_pay,
@@ -263,9 +307,9 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
             out_rows.append(row)
 
             if (r % 10) == 0 or r == rounds:
-                print(f"[{variant}] [{model_name} vs {heuristic_name}] round {r}/{rounds} coop_prob={coop_prob:.3f} choice={model_choice} model_score={total_model_score}")
+                print(f"[{variant}] [{model_name} vs {heuristic_name}] round {r}/{rounds} coop_prob={coop_prob:.3f} choice={model_choice} score={total_model_score}")
 
-# --- Runner ---------------------------------------------------------------
+# --- Modified run_all ------------------------------------------------------
 def run_all(args, variants_list):
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
@@ -275,32 +319,38 @@ def run_all(args, variants_list):
         "QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
 
-    device = args.device
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-    out_rows = []
+    fieldnames = [
+        "timestamp","seed","model","variant","heuristic","round","coop_prob",
+        "model_choice","model_reason","coop_streak",
+        "model_payoff","heuristic_payoff","relative_payoff",
+        "history_model","history_heuristic"
+    ]
+
     for model_name, model_path in model_registry.items():
         print(f"Loading model {model_name} from {model_path} on {device} ...")
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        print("tokenizer retrieved")
-        model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True, dtype="bfloat16", device_map="auto")
-        print("Model done loading!")
+        model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
+                                                     dtype=torch.bfloat16, device_map="auto")
         model.eval()
-        # For each variant, run a set of matches; histories are maintained per match inside play_iterated_pd
-        for variant in variants_list:
-            play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=args.rounds, seed=0, out_rows=out_rows, variant=variant, prompt_rounds=args.prompt_rounds)
-        print("all done with model", model_name)
 
-    # write CSV (includes variant)
-    fieldnames = ["timestamp","model","variant","heuristic","round","coop_prob","model_choice","model_reason","coop_streak","model_payoff","heuristic_payoff","relative_payoff","history_model","history_heuristic"]
-    with open(args.out, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in out_rows:
-            writer.writerow(row)
+        for seed in range(100):
+            print(f"\n=== Running seed {seed} for {model_name} ===\n")
+            out_rows = []
+            for variant in variants_list:
+                play_iterated_pd(
+                    model_name, model_path, tokenizer, model, device,
+                    rounds=args.rounds, seed=seed, out_rows=out_rows,
+                    variant=variant, prompt_rounds=args.prompt_rounds
+                )
 
-    print("Done. Results written to", args.out)
+            # Save progress after each seed
+            append_rows_to_csv(args.out, fieldnames, out_rows)
+            print(f"Seed {seed} completed and saved ({len(out_rows)} rows).")
+
+    print("All seeds done. Final results in", args.out)
+
 
 # --- Entrypoint -------------------------------------------------------------
 def main():
@@ -310,7 +360,6 @@ def main():
     p.add_argument("--device", default=None, help="cuda or cpu; default auto-detect")
     p.add_argument("--variants", default="default", help="comma-separated: default,game-theorist or 'both'")
     p.add_argument("--prompt-rounds", type=int, default=5, help="how many past rounds to include in the prompt (default 5)")
-    p.add_argument("--gui", action="store_true", help="open a small GUI with a 'Run Both' button")
     args = p.parse_args()
 
     args.prompt_rounds = max(1, int(args.prompt_rounds))
