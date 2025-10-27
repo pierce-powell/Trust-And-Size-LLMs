@@ -314,9 +314,9 @@ def run_all(args, variants_list):
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
         "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
-        "QWEN2.5-7B": str(base / "Qwen2.5-7B"),
-        "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
-        "QWEN2.5-72B": str(base / "Qwen2.5-72B"),
+        #"QWEN2.5-7B": str(base / "Qwen2.5-7B"),
+        #"QWEN2.5-32B": str(base / "Qwen2.5-32B"),
+        #"QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -335,7 +335,7 @@ def run_all(args, variants_list):
                                                      dtype=torch.bfloat16, device_map="auto")
         model.eval()
 
-        for seed in range(100):
+        for seed in range(2, 100):
             print(f"\n=== Running seed {seed} for {model_name} ===\n")
             out_rows = []
             for variant in variants_list:

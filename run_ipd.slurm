@@ -2,7 +2,7 @@
 #SBATCH --job-name=ipd_test
 #SBATCH --output=ipd_test.%j.out
 #SBATCH --error=ipd_test.%j.err
-#SBATCH --time=02:00:00
+#SBATCH --time=23:00:00
 #SBATCH --constraint=h100        # or the specific partition name for H100s on your cluster
 #SBATCH --gres=gpu:2                  # Request 2 GPUs
 #SBATCH --cpus-per-task=8
