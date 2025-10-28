@@ -14,6 +14,7 @@ import random
 import re
 import threading
 import time
+import math
 from pathlib import Path
 
 import torch
@@ -138,34 +139,59 @@ def build_prompt_variant(variant, history_model, history_heuristic, prompt_round
     ])
     return prompt
 
-# --- Scoring helper --------------------------------------------------------
-@torch.no_grad()
-def score_choice_probs(model, tokenizer, prompt, choices=CHOICES, device="cpu"):
-    model.eval()
-    enc = tokenizer(prompt, return_tensors="pt")
-    input_ids = enc["input_ids"].to(device)
-    probs = {}
-    for choice in choices:
-        choice_ids = tokenizer.encode(" " + choice if not choice.startswith(" ") else choice, add_special_tokens=False)
-        cur_input = input_ids.clone()
-        logp = 0.0
-        for token_id in choice_ids:
-            outputs = model(input_ids=cur_input)
-            logits = outputs.logits
-            last_logits = logits[0, -1, :]
-            token_logp = float(torch.log_softmax(last_logits, dim=-1)[token_id].cpu().item())
-            logp += token_logp
-            cur_input = torch.cat([cur_input, torch.tensor([[token_id]], device=cur_input.device)], dim=1)
-        probs[choice] = float(torch.exp(torch.tensor(logp)).cpu().item())
 
-    s = sum(probs.values())
-    if s > 0:
-        for k in probs:
-            probs[k] = probs[k] / s
-    else:
-        for k in probs:
-            probs[k] = 1.0 / len(probs)
+@torch.no_grad()
+def score_choice_probs_batched(model, tokenizer, prompt, choices=CHOICES, device=None):
+
+    device = device or next(model.parameters()).device
+
+    # Tokenize base prompt once
+    base_enc = tokenizer(prompt, return_tensors="pt")
+    base_ids = base_enc["input_ids"].to(device)  # shape (1, L)
+
+    # build batch: for each candidate, concatenate base + choice tokens
+    batches = []
+    choice_lengths = []
+    for choice in choices:
+        # ensure a leading space to match generation spacing
+        enc_choice = tokenizer(" " + choice, add_special_tokens=False)
+        choice_ids = enc_choice["input_ids"]
+        choice_lengths.append(len(choice_ids))
+        concat = torch.cat([base_ids[0], torch.tensor(choice_ids, device=device)], dim=0)
+        batches.append(concat)
+
+    max_len = max(x.size(0) for x in batches)
+    input_ids = torch.zeros((len(batches), max_len), dtype=torch.long, device=device)
+    attention_mask = torch.zeros_like(input_ids)
+    for i, seq in enumerate(batches):
+        input_ids[i, : seq.size(0)] = seq
+        attention_mask[i, : seq.size(0)] = 1
+
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+
+    outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+    logits = outputs.logits  # (batch, seq_len, vocab)
+
+    log_probs = []
+    for i, L_choice in enumerate(choice_lengths):
+        # get the actual sequence length from attention_mask
+        seq_len = int(attention_mask[i].sum().item())
+        start = seq_len - L_choice
+        lp = 0.0
+        for t in range(start, seq_len):
+            token_id = int(input_ids[i, t].item())
+            # logits index: logits[i, t-1] predicts token at position t
+            token_logits = logits[i, t - 1]
+            token_logp = float(torch.log_softmax(token_logits, dim=-1)[token_id].cpu().item())
+            lp += token_logp
+        log_probs.append(lp)
+
+    # normalize to probabilities
+    probs_exp = [math.exp(lp) for lp in log_probs]
+    s = sum(probs_exp)
+    probs = {choices[i]: (probs_exp[i] / s if s > 0 else 1.0 / len(choices)) for i in range(len(choices))}
     return probs
+
 
 # --- Generation & parsing --------------------------------------------------
 def extract_first_json_from_text(text):
@@ -179,7 +205,9 @@ def extract_first_json_from_text(text):
     return None
 
 @torch.no_grad()
-def get_model_json_decision(model, tokenizer, prompt, device="cpu", max_new_tokens=128):
+def get_model_json_decision(model, tokenizer, prompt, device=None, max_new_tokens=128):
+    device =  device or next(model.parameters()).device
+    
     enc = tokenizer(prompt, return_tensors="pt")
     input_ids = enc["input_ids"].to(device)
     attention_mask = enc.get("attention_mask")
@@ -226,7 +254,7 @@ def append_rows_to_csv(filepath, fieldnames, rows):
             writer.writerow(row)
 
 # --- Modified play_iterated_pd --------------------------------------------
-def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20,
+def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, rounds=20,
                      seed=0, out_rows=None, variant="default", prompt_rounds=5):
     random.seed(seed)
     torch.manual_seed(seed)
@@ -241,19 +269,25 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
         for r in range(1, rounds + 1):
             print(f"[seed={seed}] [{variant}] {model_name} vs {heuristic_name} — Round {r}")
 
-            if variant in ("default", "game-theorist"):
+            v = variant.lower()
+            if v in ("default", "game-theorist"):
                 # Normal variants
                 prompt = build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds)
                 model_action_word, model_reason = get_model_json_decision(model, tokenizer, prompt, device=device)
-            elif variant == "COA":
+            elif v == "coa":
                 # Get default + theorist responses first
                 def_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
                 theo_prompt = build_prompt_variant("game-theorist", history_model, history_heuristic, prompt_rounds)
+
                 def_json_action, def_reason = get_model_json_decision(model, tokenizer, def_prompt, device=device)
                 theo_json_action, theo_reason = get_model_json_decision(model, tokenizer, theo_prompt, device=device)
 
+                # make JSON strings explicitly (use null -> string "None" if missing so the COA prompt is valid text)
                 def_json = json.dumps({"action": def_json_action, "reason": def_reason})
                 theo_json = json.dumps({"action": theo_json_action, "reason": theo_reason})
+
+                # debug print so you can see it's being run in the log
+                print(f"[COA] def: {def_json}  theo: {theo_json}")
 
                 # Now feed both into meta prompt
                 coa_prompt = COA_PROMPT_TEMPLATE.format(
@@ -264,9 +298,10 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
             else:
                 raise ValueError(f"Unknown variant: {variant}")
 
+
             # Score probabilities for logging
             base_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
-            probs = score_choice_probs(model, tokenizer, base_prompt, choices=CHOICES, device=device)
+            probs = score_choice_probs_batched(model, tokenizer, base_prompt, choices=CHOICES, device=device)
             coop_prob = probs.get("Cooperate", 0.0)
 
             # Fallback if model_action_word is None
@@ -313,13 +348,11 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device, rounds=20
 def run_all(args, variants_list):
     base = Path.home() / "hf_cache" / "hf_cache"
     model_registry = {
-        "QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
+        #"QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
         #"QWEN2.5-7B": str(base / "Qwen2.5-7B"),
-        #"QWEN2.5-32B": str(base / "Qwen2.5-32B"),
+        "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
         #"QWEN2.5-72B": str(base / "Qwen2.5-72B"),
     }
-
-    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     fieldnames = [
         "timestamp","seed","model","variant","heuristic","round","coop_prob",
@@ -329,18 +362,20 @@ def run_all(args, variants_list):
     ]
 
     for model_name, model_path in model_registry.items():
-        print(f"Loading model {model_name} from {model_path} on {device} ...")
         tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
         model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
-                                                     dtype=torch.bfloat16, device_map="auto")
+                                                     torch_dtype=torch.bfloat16, device_map="auto")
         model.eval()
+        print(f"Loaded model {model_name} from {model_path} on device {next(model.parameters()).device} ...")
 
-        for seed in range(2, 100):
+
+
+        for seed in range(100):
             print(f"\n=== Running seed {seed} for {model_name} ===\n")
             out_rows = []
             for variant in variants_list:
                 play_iterated_pd(
-                    model_name, model_path, tokenizer, model, device,
+                    model_name, model_path, tokenizer, model, None,
                     rounds=args.rounds, seed=seed, out_rows=out_rows,
                     variant=variant, prompt_rounds=args.prompt_rounds
                 )
@@ -367,11 +402,14 @@ def main():
     # parse variants
     raw = args.variants.strip().lower()
     if raw in ("both", "all"):
-        variants_list = ["default", "game-theorist"]
+        # include COA when user asks for "both/all"
+        variants_list = ["default", "game-theorist", "coa"]
     else:
-        variants_list = [v.strip() for v in raw.split(",") if v.strip() in ("default", "game-theorist")]
+        allowed = {"default", "game-theorist", "coa"}
+        variants_list = [v.strip() for v in raw.split(",") if v.strip() in allowed]
         if not variants_list:
             variants_list = ["default"]
+
 
 
     run_all(args, variants_list)
