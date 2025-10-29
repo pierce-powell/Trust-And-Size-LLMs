@@ -89,22 +89,21 @@ Remember to use only the following JSON format (and nothing else):
 
 # --- New: meta prompt for COA ---------------------------------------------
 COA_PROMPT_TEMPLATE = """
-Two reasoning variants were consulted about the next action in the Iterated Prisoner's Dilemma.
+Compare the following two model responses:
 
-Variant 1 (Default) responded:
+Default model output:
 {default_json}
 
-Variant 2 (Game-Theorist) responded:
+Game-theorist model output:
 {theorist_json}
 
-Now, as an impartial arbiter, consider both responses carefully and decide the **final action** Player A should take.
-Respond ONLY in valid JSON format:
+You are the combined reasoning model. Consider both responses carefully and produce a final unified decision.
 
-{"action":<ACTIONofA>,"reason":<YOURREASON>}
+Respond only in the following JSON format:
 
-<ActionOfA> must be exactly "Cooperate" or "Defect".
-<YOURREASON> should briefly justify why this final choice is best considering both perspectives.
+{{"action": <ACTION>, "reason": <REASON>}}
 """
+
 
 # --- Prompt builder ---------------------------------------------------------
 def format_last_n_rounds(history_model, history_heuristic, n=5):
