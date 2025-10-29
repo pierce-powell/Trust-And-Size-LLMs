@@ -40,6 +40,8 @@ accelerate config default \
   --offload_state_dict=false \
   --use_deepspeed=false
 
+  
+
 # ---- Launch the script using accelerate ----
 # accelerate will spawn 2 processes (one per GPU) according to the config above.
 accelerate launch ipd_test.py --out results_qwen_32.csv --rounds 100 --variants default,game-theorist,COA
