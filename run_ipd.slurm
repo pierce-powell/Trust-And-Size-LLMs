@@ -18,7 +18,10 @@ export TRANSFORMERS_OFFLINE=1
 export HF_DATASETS_OFFLINE=1
 
 # accelerate config
-export ACCELERATE_CONFIG_FILE=~/home/pi047867/Trust-And-Size-LLMs/default_config.yaml
+export ACCELERATE_CONFIG_FILE=/home/pi047867/Trust-And-Size-LLMs/default_config.yaml
+
+echo $ACCELERATE_CONFIG_FILE
+accelerate config list
 
 
 # limit MKL/OMP threads to match cpus-per-task
@@ -38,7 +41,7 @@ MODEL_NAME=QWEN2.5-0.5B
 accelerate launch ipd_test.py \
   --model "$MODEL_PATH" \
   --model-name "$MODEL_NAME" \
-  --out results_qwen_mini.csv \
+  --out results_qwen_05B_final.csv \
   --rounds 100 \
   --variants default,game-theorist,coa \
   --include-not-gamified
