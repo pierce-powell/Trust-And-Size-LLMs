@@ -30,7 +30,15 @@ export CUDA_VISIBLE_DEVICES=0,1
 
 # Install deps if not already present. Prefer installing once outside batch jobs.
 pip install -U transformers torch accelerate --no-cache-dir
-  
-# ---- Launch the script using accelerate ----
-# accelerate will spawn 2 processes (one per GPU) according to the config above.
-accelerate launch ipd_test.py --out results_qwen_32.csv --rounds 100 --variants default,game-theorist,COA
+
+
+MODEL_PATH=$HOME/hf_cache/hf_cache/QWEN_mini/Qwen2.5-0.5B
+MODEL_NAME=QWEN2.5-0.5B
+
+accelerate launch ipd_test.py \
+  --model "$MODEL_PATH" \
+  --model-name "$MODEL_NAME" \
+  --out results_qwen_mini.csv \
+  --rounds 100 \
+  --variants default,game-theorist,coa \
+  --include-not-gamified

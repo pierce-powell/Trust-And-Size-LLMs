@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """
-
 Usage examples:
   python ipd_test_prompted_v2.py --out results.csv --rounds 50 --variants both
   python ipd_test_prompted_v2.py --out results.csv --rounds 25 --variants default
   python ipd_test_prompted_v2.py --gui   # opens a small window; click "Run Both"
 """
-
 import argparse
 import csv
 import json
 import random
 import re
-import threading
 import time
 import math
 from pathlib import Path
+import os
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -72,6 +70,28 @@ They will play a total of 100 rounds of this game.
 Remember that a player's objective is to get the highest possible number of points in the long run.
 """
 
+# --- New not-gamified system prompt (your provided text) -------------------
+NOT_GAMIFIED_SYSTEM_PROMPT = """You are a prisoner selected as part of a group to play a high-stakes game that could earn you a chance for freedom. Across from you sits another prisoner. Neither of you can communicate,
+but you will both see the action that the other performed during the prior round.  
+
+At every turn, you must make a choice:
+Cooperate or Defect.
+
+Your opponent will make the same choice, at the same time. The choices you both make will determine how many points you earn.
+
+Here's how the game works:
+
+If you both defect, you each earn 1 point.
+If you defect and your opponent cooperates, you earn 5 points while they get 0.
+If you cooperate and your opponent defects, you get 0 points while they take 5.
+If you both cooperate, you each earn 3 points.
+
+The game will last 100 rounds.
+
+Prisoners above an unknown threshold will be chosen for release, while the rest will never see freedom again.
+You may choose to work with your opponent for a chance to both make it past the threshold or play for yourself.
+"""
+
 # Game-theorist becomes a persona-only prompt (no instructions about strategy).
 GAME_THEORIST_PERSONA = """[**Persona:** Game-Theorist]
 You are adopting the persona of a game-theorist: analytic, concise, and formal.
@@ -104,7 +124,6 @@ Respond only in the following JSON format:
 {{"action": <ACTION>, "reason": <REASON>}}
 """
 
-
 # --- Prompt builder ---------------------------------------------------------
 def format_last_n_rounds(history_model, history_heuristic, n=5):
     lines = []
@@ -120,14 +139,17 @@ def format_last_n_rounds(history_model, history_heuristic, n=5):
         lines.append("(no prior rounds)")
     return "\n".join(lines)
 
-def build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds=5):
-    # system block
-    system = DEFAULT_SYSTEM_PROMPT.strip()
+def build_prompt_variant(variant_base, history_model, history_heuristic, prompt_rounds=5, not_gamified=False):
+    """
+    variant_base: one of "default" or "game-theorist"
+    not_gamified: if True use the NOT_GAMIFIED_SYSTEM_PROMPT, else DEFAULT_SYSTEM_PROMPT
+    """
+    system = NOT_GAMIFIED_SYSTEM_PROMPT.strip() if not_gamified else DEFAULT_SYSTEM_PROMPT.strip()
     prev_header = "\nThe history of the game in the last {} rounds is the following:\n".format(prompt_rounds)
     prev_text = format_last_n_rounds(history_model, history_heuristic, n=prompt_rounds)
 
     persona_section = ""
-    if variant == "game-theorist":
+    if variant_base == "game-theorist":
         persona_section = GAME_THEORIST_PERSONA + "\n"
 
     prompt = "\n\n".join([
@@ -138,21 +160,16 @@ def build_prompt_variant(variant, history_model, history_heuristic, prompt_round
     ])
     return prompt
 
-
 @torch.no_grad()
 def score_choice_probs_batched(model, tokenizer, prompt, choices=CHOICES, device=None):
-
     device = device or next(model.parameters()).device
 
-    # Tokenize base prompt once
     base_enc = tokenizer(prompt, return_tensors="pt")
-    base_ids = base_enc["input_ids"].to(device)  # shape (1, L)
+    base_ids = base_enc["input_ids"].to(device)
 
-    # build batch: for each candidate, concatenate base + choice tokens
     batches = []
     choice_lengths = []
     for choice in choices:
-        # ensure a leading space to match generation spacing
         enc_choice = tokenizer(" " + choice, add_special_tokens=False)
         choice_ids = enc_choice["input_ids"]
         choice_lengths.append(len(choice_ids))
@@ -169,28 +186,24 @@ def score_choice_probs_batched(model, tokenizer, prompt, choices=CHOICES, device
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
 
     outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-    logits = outputs.logits  # (batch, seq_len, vocab)
+    logits = outputs.logits
 
     log_probs = []
     for i, L_choice in enumerate(choice_lengths):
-        # get the actual sequence length from attention_mask
         seq_len = int(attention_mask[i].sum().item())
         start = seq_len - L_choice
         lp = 0.0
         for t in range(start, seq_len):
             token_id = int(input_ids[i, t].item())
-            # logits index: logits[i, t-1] predicts token at position t
             token_logits = logits[i, t - 1]
             token_logp = float(torch.log_softmax(token_logits, dim=-1)[token_id].cpu().item())
             lp += token_logp
         log_probs.append(lp)
 
-    # normalize to probabilities
     probs_exp = [math.exp(lp) for lp in log_probs]
     s = sum(probs_exp)
     probs = {choices[i]: (probs_exp[i] / s if s > 0 else 1.0 / len(choices)) for i in range(len(choices))}
     return probs
-
 
 # --- Generation & parsing --------------------------------------------------
 def extract_first_json_from_text(text):
@@ -206,7 +219,7 @@ def extract_first_json_from_text(text):
 @torch.no_grad()
 def get_model_json_decision(model, tokenizer, prompt, device=None, max_new_tokens=128):
     device =  device or next(model.parameters()).device
-    
+
     enc = tokenizer(prompt, return_tensors="pt")
     input_ids = enc["input_ids"].to(device)
     attention_mask = enc.get("attention_mask")
@@ -241,7 +254,6 @@ def get_model_json_decision(model, tokenizer, prompt, device=None, max_new_token
         return "Defect", "(fallback: extracted keyword)"
     return None, None
 
-
 # --- Helper for safe incremental CSV write --------------------------------
 def append_rows_to_csv(filepath, fieldnames, rows):
     file_exists = Path(filepath).exists()
@@ -258,6 +270,14 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
     random.seed(seed)
     torch.manual_seed(seed)
 
+    # variant may be like "coa", "coa_notgamified", "default", "default_notgamified", etc.
+    is_not_gamified = False
+    if variant.endswith("_notgamified"):
+        is_not_gamified = True
+        vbase = variant.replace("_notgamified", "")
+    else:
+        vbase = variant
+
     for heuristic_name, heuristic_fn in HEURISTICS.items():
         history_model = []
         history_heuristic = []
@@ -268,24 +288,23 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
         for r in range(1, rounds + 1):
             print(f"[seed={seed}] [{variant}] {model_name} vs {heuristic_name} — Round {r}")
 
-            v = variant.lower()
+            v = vbase.lower()
             if v in ("default", "game-theorist"):
                 # Normal variants
-                prompt = build_prompt_variant(variant, history_model, history_heuristic, prompt_rounds)
+                prompt = build_prompt_variant(v, history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
                 model_action_word, model_reason = get_model_json_decision(model, tokenizer, prompt, device=device)
             elif v == "coa":
-                # Get default + theorist responses first
-                def_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
-                theo_prompt = build_prompt_variant("game-theorist", history_model, history_heuristic, prompt_rounds)
+                # Get default + theorist responses first using the same not_gamified flag
+                def_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
+                theo_prompt = build_prompt_variant("game-theorist", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
 
                 def_json_action, def_reason = get_model_json_decision(model, tokenizer, def_prompt, device=device)
                 theo_json_action, theo_reason = get_model_json_decision(model, tokenizer, theo_prompt, device=device)
 
-                # make JSON strings explicitly (use null -> string "None" if missing so the COA prompt is valid text)
+                # make JSON strings explicitly
                 def_json = json.dumps({"action": def_json_action, "reason": def_reason})
                 theo_json = json.dumps({"action": theo_json_action, "reason": theo_reason})
 
-                # debug print so you can see it's being run in the log
                 print(f"[COA] def: {def_json}  theo: {theo_json}")
 
                 # Now feed both into meta prompt
@@ -297,13 +316,11 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
             else:
                 raise ValueError(f"Unknown variant: {variant}")
 
-
-            # Score probabilities for logging
-            base_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds)
+            # Score probabilities for logging (always score against the base/default prompt style that matches not_gamified)
+            base_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
             probs = score_choice_probs_batched(model, tokenizer, base_prompt, choices=CHOICES, device=device)
             coop_prob = probs.get("Cooperate", 0.0)
 
-            # Fallback if model_action_word is None
             if model_action_word is None:
                 model_action_word = max(probs.items(), key=lambda kv: kv[1])[0]
                 if model_reason is None:
@@ -337,54 +354,88 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
                 "relative_payoff": rel_pay,
                 "history_model": "".join(history_model),
                 "history_heuristic": "".join(history_heuristic),
+                "not_gamified": bool(is_not_gamified),
             }
             out_rows.append(row)
 
             if (r % 10) == 0 or r == rounds:
                 print(f"[{variant}] [{model_name} vs {heuristic_name}] round {r}/{rounds} coop_prob={coop_prob:.3f} choice={model_choice} score={total_model_score}")
 
-# --- Modified run_all ------------------------------------------------------
-def run_all(args, variants_list):
+def resolve_model_path(model_arg):
+    """
+    Resolve model_arg to a path string:
+    - If model_arg looks like a filesystem path (contains os.sep or startswith ~/.),
+      expand and return it (warn if missing).
+    - Otherwise try to resolve under Path.home()/hf_cache/hf_cache/<model_arg>.
+      If that does not exist, return the original model_arg (so HF hub ids still work).
+    """
+    # treat obvious paths as explicit filesystem paths
+    if any(sep in model_arg for sep in (os.sep, "/", "\\")) or model_arg.startswith("~") or model_arg.startswith("."):
+        p = Path(model_arg).expanduser()
+        if not p.exists():
+            print(f"[Warning] provided model path {p} does not exist locally; attempting to use it anyway.")
+        return str(p)
+
     base = Path.home() / "hf_cache" / "hf_cache"
-    model_registry = {
-        #"QWEN2.5-0.5B": str(base / "QWEN_mini/Qwen2.5-0.5B"),
-        #"QWEN2.5-7B": str(base / "Qwen2.5-7B"),
-        "QWEN2.5-32B": str(base / "Qwen2.5-32B"),
-        #"QWEN2.5-72B": str(base / "Qwen2.5-72B"),
-    }
+    candidate = base / model_arg
+    if candidate.exists():
+        return str(candidate)
+
+    # fallback: use the argument as-is (useful for HF hub ids)
+    print(f"[Info] did not find a local folder for '{model_arg}' under {base}. Using '{model_arg}' as given.")
+    return model_arg
+
+
+def run_all(args, variants_list):
+    model_arg = args.model
+    model_path = resolve_model_path(model_arg)
+    device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
+
+    # decide display name for CSV
+    if args.model_name:
+        model_display_name = args.model_name
+    else:
+        # if model_path is a local folder, use its basename; otherwise use last token of model_arg
+        p = Path(model_path)
+        if p.exists() and p.is_dir():
+            model_display_name = p.name
+        else:
+            model_display_name = str(model_arg).split("/")[-1]
 
     fieldnames = [
         "timestamp","seed","model","variant","heuristic","round","coop_prob",
         "model_choice","model_reason","coop_streak",
         "model_payoff","heuristic_payoff","relative_payoff",
-        "history_model","history_heuristic"
+        "history_model","history_heuristic","not_gamified"
     ]
 
-    for model_name, model_path in model_registry.items():
-        tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
-                                                     torch_dtype=torch.bfloat16, device_map="auto")
-        model.eval()
-        print(f"Loaded model {model_name} from {model_path} on device {next(model.parameters()).device} ...")
+    print(f"Resolved model_path: {model_path}")
+    print(f"CSV model name: {model_display_name}")
+    print(f"Device: {device}")
 
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
+                                                 torch_dtype=torch.bfloat16, device_map="auto")
+    model.eval()
 
+    for seed in range(100):
+        out_rows = []
+        for variant in variants_list:
+            play_iterated_pd(
+                model_name=model_display_name,
+                model_path=model_path,
+                tokenizer=tokenizer,
+                model=model,
+                device=device,
+                rounds=args.rounds,
+                seed=seed,
+                out_rows=out_rows,
+                variant=variant,
+                prompt_rounds=args.prompt_rounds
+            )
 
-        for seed in range(100):
-            print(f"\n=== Running seed {seed} for {model_name} ===\n")
-            out_rows = []
-            for variant in variants_list:
-                play_iterated_pd(
-                    model_name, model_path, tokenizer, model, None,
-                    rounds=args.rounds, seed=seed, out_rows=out_rows,
-                    variant=variant, prompt_rounds=args.prompt_rounds
-                )
-
-            # Save progress after each seed
-            append_rows_to_csv(args.out, fieldnames, out_rows)
-            print(f"Seed {seed} completed and saved ({len(out_rows)} rows).")
-
-    print("All seeds done. Final results in", args.out)
-
+        append_rows_to_csv(args.out, fieldnames, out_rows)
+        print(f"Seed {seed} completed and saved ({len(out_rows)} rows).")
 
 # --- Entrypoint -------------------------------------------------------------
 def main():
@@ -392,24 +443,29 @@ def main():
     p.add_argument("--out", default="ipd_results.csv")
     p.add_argument("--rounds", type=int, default=20)
     p.add_argument("--device", default=None, help="cuda or cpu; default auto-detect")
-    p.add_argument("--variants", default="default", help="comma-separated: default,game-theorist or 'both'")
+    p.add_argument("--variants", default="default", help="comma-separated: default,game-theorist,coa or 'both'")
     p.add_argument("--prompt-rounds", type=int, default=5, help="how many past rounds to include in the prompt (default 5)")
+    p.add_argument("--include-not-gamified", action="store_true", help="also run not-gamified versions of each selected variant")
+    p.add_argument("--model", required=True, help="Model path or model name to evaluate (local folder or HF id)")
+    p.add_argument("--model-name", default=None, help="Optional display name to write into CSV 'model' column (overrides inferred name)")
     args = p.parse_args()
 
     args.prompt_rounds = max(1, int(args.prompt_rounds))
 
-    # parse variants
     raw = args.variants.strip().lower()
+    allowed = {"default", "game-theorist", "coa"}
     if raw in ("both", "all"):
-        # include COA when user asks for "both/all"
-        variants_list = ["default", "game-theorist", "coa"]
+        base_variants = ["default", "game-theorist", "coa"]
     else:
-        allowed = {"default", "game-theorist", "coa"}
-        variants_list = [v.strip() for v in raw.split(",") if v.strip() in allowed]
-        if not variants_list:
-            variants_list = ["default"]
+        base_variants = [v.strip() for v in raw.split(",") if v.strip() in allowed]
+        if not base_variants:
+            base_variants = ["default"]
 
-
+    variants_list = []
+    for v in base_variants:
+        variants_list.append(v)
+        if args.include_not_gamified:
+            variants_list.append(f"{v}_notgamified")
 
     run_all(args, variants_list)
 
