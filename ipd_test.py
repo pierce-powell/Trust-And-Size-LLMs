@@ -40,7 +40,11 @@ def tit_for_4_tat(history_model, history_heuristic):
     if not history_model:
         return "C"
     recent = history_model[-4:]
-    return "D" if "D" in recent else "C"
+
+def tit_for_tat(history_model, history_heuristic):
+    if not history_model:
+        return "C"
+    return history_model[-1]
 
 def random_strategy(history_model, history_heuristic):
     return random.choice(["C", "D"])
@@ -48,7 +52,7 @@ def random_strategy(history_model, history_heuristic):
 HEURISTICS = {
     "AlwaysCooperate": always_cooperate,
     "AlwaysDefect": always_defect,
-    "Tit4Tat": tit_for_4_tat,
+    "Tit4Tat": tit_for_tat,
     "Random": random_strategy,
 }
 
