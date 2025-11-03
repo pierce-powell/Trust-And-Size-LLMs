@@ -21,7 +21,6 @@ export HF_DATASETS_OFFLINE=1
 export ACCELERATE_CONFIG_FILE=/home/pi047867/Trust-And-Size-LLMs/default_config.yaml
 
 echo $ACCELERATE_CONFIG_FILE
-accelerate config list
 
 
 # limit MKL/OMP threads to match cpus-per-task

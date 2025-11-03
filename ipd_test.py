@@ -254,23 +254,111 @@ def get_model_json_decision(model, tokenizer, prompt, device=None, max_new_token
         return "Defect", "(fallback: extracted keyword)"
     return None, None
 
-# --- Helper for safe incremental CSV write --------------------------------
 def append_rows_to_csv(filepath, fieldnames, rows):
+    """
+    Append rows (list of dict) to CSV at filepath using the given fieldnames.
+    This function flushes and fsyncs the file to reduce the chance of lost
+    writes if the process is killed.
+    """
     file_exists = Path(filepath).exists()
+    # Ensure parent directory exists
+    Path(filepath).parent.mkdir(parents=True, exist_ok=True)
     with open(filepath, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
         for row in rows:
             writer.writerow(row)
+        # Force Python to flush its buffers and ask OS to flush to disk
+        f.flush()
+        try:
+            os.fsync(f.fileno())
+        except Exception:
+            # fsync may fail on some filesystems/environments — it's best-effort.
+            pass
 
-# --- Modified play_iterated_pd --------------------------------------------
+
+def load_csv_progress(filepath):
+    """
+    Read existing CSV and return a nested dict:
+      progress[seed][variant][heuristic] = {
+          "last_round": int,
+          "history_model": list of "C"/"D",
+          "history_heuristic": list of "C"/"D",
+          "coop_streak": int,
+          "total_model_score": int,
+          "total_heuristic_score": int,
+      }
+    If the CSV doesn't exist, returns {}.
+    """
+    from collections import defaultdict
+
+    if not Path(filepath).exists():
+        return {}
+
+    progress = defaultdict(lambda: defaultdict(dict))
+    with open(filepath, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                seed = int(row["seed"])
+                variant = row["variant"]
+                heuristic = row["heuristic"]
+                rnd = int(row["round"])
+                hist_m = row.get("history_model", "") or ""
+                hist_h = row.get("history_heuristic", "") or ""
+            except Exception:
+                # skip malformed rows
+                continue
+
+            # keep only the row with the largest round per key
+            cur = progress[seed].get(variant, {}).get(heuristic)
+            if cur is None or rnd > cur["last_round"]:
+                # compute scores from the history strings
+                total_model_score = 0
+                total_heuristic_score = 0
+                for a, b in zip(hist_m, hist_h):
+                    if (a, b) in PAYOFFS:
+                        m_pay, h_pay = PAYOFFS[(a, b)]
+                    else:
+                        # defensive fallback if characters are not C/D
+                        m_pay, h_pay = 0, 0
+                    total_model_score += m_pay
+                    total_heuristic_score += h_pay
+
+                coop_streak = 0
+                for c in hist_m[::-1]:
+                    if c == "C":
+                        coop_streak += 1
+                    else:
+                        break
+
+                progress[seed].setdefault(variant, {})[heuristic] = {
+                    "last_round": rnd,
+                    "history_model": list(hist_m),
+                    "history_heuristic": list(hist_h),
+                    "coop_streak": coop_streak,
+                    "total_model_score": total_model_score,
+                    "total_heuristic_score": total_heuristic_score,
+                }
+
+    # convert defaultdict to normal dict
+    return {s: {v: dict(hdict) for v, hdict in vdict.items()} for s, vdict in progress.items()}
+
+
+# ---------- Modified play_iterated_pd --------------------------------------
 def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, rounds=20,
-                     seed=0, out_rows=None, variant="default", prompt_rounds=5):
+                     seed=0, out_rows=None, variant="default", prompt_rounds=5,
+                     initial_states=None, out_csv=None, fieldnames=None):
+    """
+    initial_states: optional mapping heuristic_name -> state (as produced by load_csv_progress)
+    out_rows: optional list buffer (kept for backwards compatibility)
+    out_csv & fieldnames: if provided, this function will write each heuristic's
+      completed rounds to CSV immediately after finishing that inner loop.
+    """
     random.seed(seed)
     torch.manual_seed(seed)
 
-    # variant may be like "coa", "coa_notgamified", "default", "default_notgamified", etc.
     is_not_gamified = False
     if variant.endswith("_notgamified"):
         is_not_gamified = True
@@ -279,35 +367,37 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
         vbase = variant
 
     for heuristic_name, heuristic_fn in HEURISTICS.items():
-        history_model = []
-        history_heuristic = []
-        coop_streak = 0
-        total_model_score = 0
-        total_heuristic_score = 0
+        # reconstruct per-heuristic initial state if provided
+        init = (initial_states or {}).get(heuristic_name, {}) if initial_states else {}
+        history_model = init.get("history_model", [])[:]
+        history_heuristic = init.get("history_heuristic", [])[:]
+        coop_streak = init.get("coop_streak", 0)
+        total_model_score = init.get("total_model_score", 0)
+        total_heuristic_score = init.get("total_heuristic_score", 0)
+        start_round = (init.get("last_round", 0) + 1) if init else 1
 
-        for r in range(1, rounds + 1):
+        # Buffer rows for this single heuristic; we'll flush them to disk when the loop finishes
+        heur_rows = []
+
+        for r in range(start_round, rounds + 1):
             print(f"[seed={seed}] [{variant}] {model_name} vs {heuristic_name} — Round {r}")
 
             v = vbase.lower()
             if v in ("default", "game-theorist"):
-                # Normal variants
                 prompt = build_prompt_variant(v, history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
                 model_action_word, model_reason = get_model_json_decision(model, tokenizer, prompt, device=device)
             elif v == "coa":
-                # Get default + theorist responses first using the same not_gamified flag
                 def_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
                 theo_prompt = build_prompt_variant("game-theorist", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
 
                 def_json_action, def_reason = get_model_json_decision(model, tokenizer, def_prompt, device=device)
                 theo_json_action, theo_reason = get_model_json_decision(model, tokenizer, theo_prompt, device=device)
 
-                # make JSON strings explicitly
                 def_json = json.dumps({"action": def_json_action, "reason": def_reason})
                 theo_json = json.dumps({"action": theo_json_action, "reason": theo_reason})
 
                 print(f"[COA] def: {def_json}  theo: {theo_json}")
 
-                # Now feed both into meta prompt
                 coa_prompt = COA_PROMPT_TEMPLATE.format(
                     default_json=def_json,
                     theorist_json=theo_json
@@ -316,7 +406,7 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
             else:
                 raise ValueError(f"Unknown variant: {variant}")
 
-            # Score probabilities for logging (always score against the base/default prompt style that matches not_gamified)
+            # Score probabilities for logging
             base_prompt = build_prompt_variant("default", history_model, history_heuristic, prompt_rounds, not_gamified=is_not_gamified)
             probs = score_choice_probs_batched(model, tokenizer, base_prompt, choices=CHOICES, device=device)
             coop_prob = probs.get("Cooperate", 0.0)
@@ -356,10 +446,21 @@ def play_iterated_pd(model_name, model_path, tokenizer, model, device=None, roun
                 "history_heuristic": "".join(history_heuristic),
                 "not_gamified": bool(is_not_gamified),
             }
-            out_rows.append(row)
+
+            # Buffer this row for the current heuristic
+            heur_rows.append(row)
+            # Also append to shared buffer if caller passed one (keeps backward compatibility)
+            if out_rows is not None:
+                out_rows.append(row)
 
             if (r % 10) == 0 or r == rounds:
                 print(f"[{variant}] [{model_name} vs {heuristic_name}] round {r}/{rounds} coop_prob={coop_prob:.3f} choice={model_choice} score={total_model_score}")
+
+        # End of per-heuristic rounds loop: flush the completed heuristic rows to disk now
+        if heur_rows and out_csv and fieldnames:
+            append_rows_to_csv(out_csv, fieldnames, heur_rows)
+
+
 
 def resolve_model_path(model_arg):
     """
@@ -418,9 +519,37 @@ def run_all(args, variants_list):
                                                  torch_dtype=torch.bfloat16, device_map="auto")
     model.eval()
 
+    # load existing progress from CSV (if any)
+    progress = load_csv_progress(args.out)
+
     for seed in range(100):
+        # decide if seed is fully complete: every (variant x heuristic) has last_round >= args.rounds
+        seed_progress = progress.get(seed, {})
+        fully_done = True
+        for v in variants_list:
+            vprog = seed_progress.get(v, {})
+            for hname in HEURISTICS.keys():
+                last = vprog.get(hname, {}).get("last_round", 0)
+                if last < args.rounds:
+                    fully_done = False
+                    break
+            if not fully_done:
+                break
+
+        if fully_done:
+            print(f"Seed {seed} already fully completed in {args.out}; skipping.")
+            continue
+
         out_rows = []
+        # build initial_states per variant for this seed
         for variant in variants_list:
+            # each play_iterated_pd call expects initial_states keyed by heuristic name
+            initial_states = {}
+            vprog = seed_progress.get(variant, {})
+            for hname in HEURISTICS.keys():
+                if hname in vprog:
+                    initial_states[hname] = vprog[hname]
+
             play_iterated_pd(
                 model_name=model_display_name,
                 model_path=model_path,
@@ -429,13 +558,19 @@ def run_all(args, variants_list):
                 device=device,
                 rounds=args.rounds,
                 seed=seed,
-                out_rows=out_rows,
+                out_rows=out_rows,                # optional shared buffer
                 variant=variant,
-                prompt_rounds=args.prompt_rounds
+                prompt_rounds=args.prompt_rounds,
+                initial_states=initial_states,
+                out_csv=args.out,                 # <-- write per-heuristic to disk
+                fieldnames=fieldnames
             )
 
-        append_rows_to_csv(args.out, fieldnames, out_rows)
-        print(f"Seed {seed} completed and saved ({len(out_rows)} rows).")
+        # If any rows remain in the shared buffer (should be empty because per-heuristic writes happened),
+        # write them now to avoid losing them.
+        if out_rows:
+            append_rows_to_csv(args.out, fieldnames, out_rows)
+        print(f"Seed {seed} completed and saved (seed wrote to {args.out}).")
 
 # --- Entrypoint -------------------------------------------------------------
 def main():
