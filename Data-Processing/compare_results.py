@@ -3,7 +3,7 @@
 compare_results.py
 Visualize cooperation probability and model payoff across variants and heuristics.
 
-python compare_results.py --infile qwen_05B_clean.csv
+python compare_results.py --infile qwen_05B_clean.csv --model_name "Qwen2.5-0.5B" 
 
 """
 
