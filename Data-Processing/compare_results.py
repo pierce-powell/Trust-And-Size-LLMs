@@ -12,11 +12,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-def plot_with_ci(df, metric, title, ylabel):
+def plot_with_ci(df, metric, title, ylabel, model_name):
     """
     Plot mean metric with 95% confidence intervals (normal approximation).
     Grouped by variant × heuristic × not_gamified.
     """
+
+    title = model_name + ": " + title
+
     # Compute mean, std, and count across seeds
     summary = (
         df.groupby(["variant", "heuristic", "not_gamified"])[metric]
@@ -55,6 +58,7 @@ def plot_with_ci(df, metric, title, ylabel):
 def main():
     parser = argparse.ArgumentParser(description="Plot cooperation probability and model payoff.")
     parser.add_argument("--infile", required=True, help="Path to cleaned CSV file")
+    parser.add_argument("--model_name", required=True, help="model name to be appened to title")
     args = parser.parse_args()
 
     df = pd.read_csv(args.infile)
@@ -75,7 +79,8 @@ def main():
         df,
         metric="coop_prob",
         title="Average Cooperation Probability by Variant × Heuristic × Is Serious",
-        ylabel="Cooperation Probability"
+        ylabel="Cooperation Probability", 
+        model_name = args.model_name,
     )
 
     # Plot model payoff
@@ -83,7 +88,8 @@ def main():
         df,
         metric="model_payoff",
         title="Average Model Payoff by Variant × Heuristic × Is Serious",
-        ylabel="Model Payoff"
+        ylabel="Model Payoff",
+        model_name = args.model_name
     )
 
 
