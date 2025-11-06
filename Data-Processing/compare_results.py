@@ -1,95 +1,213 @@
 #!/usr/bin/env python3
 """
-compare_results.py
-Visualize cooperation probability and model payoff across variants and heuristics.
+Usage examples:
+  python compare_results.py --infile qwen_05B_clean.csv --model_name QWEN05B
+  python compare_results.py --infiles qwen05Bclean.csv qwen7Bclean.csv qwen32Bclean.csv --model_names "QWEN-2.5 0.5B" "QWEN-2.5 7B" "QWEN-2.5 32B" --out_prefix stacked
 
-python compare_results.py --infile qwen_05B_clean.csv --model_name "Qwen2.5-0.5B" 
+This script plots stacked bar charts (one subplot per model) for the two metrics:
+ - coop_prob
+ - model_payoff
 
+Each stacked figure has one row per input model to save space on the x-axis labels.
 """
 
+import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-import argparse
+import os
+import sys
 
-def plot_with_ci(df, metric, title, ylabel, model_name):
-    """
-    Plot mean metric with 95% confidence intervals (normal approximation).
-    Grouped by variant × heuristic × not_gamified.
-    """
-
-    title = model_name + ": " + title
-
-    # Compute mean, std, and count across seeds
+def summarize_df(df, metric):
+    """Return summary DataFrame grouped by variant, heuristic, not_gamified with mean, std, count, se, ci95 and label."""
     summary = (
         df.groupby(["variant", "heuristic", "not_gamified"])[metric]
         .agg(["mean", "std", "count"])
         .reset_index()
     )
-
-    # Compute standard error and 95% CI
-    summary["se"] = summary["std"] / np.sqrt(summary["count"])
+    summary["se"] = summary["std"] / np.sqrt(summary["count"].replace(0, np.nan))
     summary["ci95"] = 1.96 * summary["se"]
-
-    # Make a readable label for each bar
+    summary["label_tuple"] = list(zip(summary["variant"], summary["heuristic"], summary["not_gamified"]))
     summary["label"] = (
         summary["variant"].astype(str) + " | "
         + summary["heuristic"].astype(str) + " | "
         + summary["not_gamified"].astype(str)
     )
+    summary = summary.set_index("label_tuple")
+    return summary
 
-    # Plotting
-    plt.figure(figsize=(14, 6))
-    plt.bar(
-        summary["label"],
-        summary["mean"],
-        yerr=summary["ci95"],
-        capsize=5,
-        color="skyblue",
-        edgecolor="black"
-    )
-    plt.xticks(rotation=45, ha="right")
-    plt.ylabel(ylabel)
-    plt.title(title)
-    plt.tight_layout()
+def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
+    """
+    dfs: list of pandas DataFrames (one per model)
+    metric: column name to plot
+    model_names: list of strings, same length as dfs
+    out_prefix: if provided, save to {out_prefix}_{metric}.png
+    """
+    # Summarize each df
+    summaries = [summarize_df(df, metric) for df in dfs]
+
+    # Build the full set of label tuples (consistent order across models)
+    all_label_tuples = sorted({t for s in summaries for t in s.index.tolist()})
+    # Readable labels in the same order
+    label_strings = []
+    for vt, ht, ng in all_label_tuples:
+        label_strings.append(f"{vt} | {ht} | {ng}")
+
+    n_models = len(dfs)
+    n_labels = len(all_label_tuples)
+    if n_labels == 0:
+        print(f"No label groups found for metric '{metric}'. Skipping.")
+        return
+
+    # Create arrays for each model aligned to all_label_tuples
+    means = np.zeros((n_models, n_labels), dtype=float)
+    cis = np.zeros_like(means)
+    counts = np.zeros_like(means, dtype=int)
+
+    for i, s in enumerate(summaries):
+        for j, lt in enumerate(all_label_tuples):
+            if lt in s.index:
+                means[i, j] = s.at[lt, "mean"] if not pd.isna(s.at[lt, "mean"]) else 0.0
+                cis[i, j] = s.at[lt, "ci95"] if not pd.isna(s.at[lt, "ci95"]) else 0.0
+                counts[i, j] = int(s.at[lt, "count"]) if not pd.isna(s.at[lt, "count"]) else 0
+            else:
+                means[i, j] = 0.0
+                cis[i, j] = 0.0
+                counts[i, j] = 0
+
+    # Figure size: keep width ~14, height proportional to number of models
+    fig_height_per_model = 3.5
+    fig, axes = plt.subplots(n_models, 1, figsize=(14, fig_height_per_model * n_models), sharex=True)
+    if n_models == 1:
+        axes = [axes]
+
+    x = np.arange(n_labels)
+
+    for i, ax in enumerate(axes):
+        # Use mask so bars for missing groups are not plotted
+        mask = counts[i] > 0
+        bar_positions = x[mask]
+        bar_heights = means[i][mask]
+        bar_err = cis[i][mask]
+
+        if bar_positions.size == 0:
+            ax.text(0.5, 0.5, "No data for this model / metric", ha="center", va="center", transform=ax.transAxes)
+            ax.set_ylim(0, 1 if "prob" in metric else max(1, np.nanmax(means) if np.nanmax(means) > 0 else 1))
+        else:
+            ax.bar(bar_positions, bar_heights, yerr=bar_err, capsize=4, edgecolor="black")
+            y_max = np.nanmax(bar_heights + bar_err) if bar_heights.size > 0 else 1
+            ax.set_ylim(0, y_max * 1.12 if y_max > 0 else 1)
+
+        # Model subtitle: place on left of subplot
+        ax.set_title(model_names[i], fontsize=10, loc="left", pad=6, style="italic")
+        ax.set_ylabel(ylabel)
+        ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
+
+    # Configure x-axis ticks only on the bottom subplot
+    # (set ticks at every label position so alignment remains consistent)
+    axes[-1].set_xticks(x)
+    axes[-1].set_xticklabels(label_strings, rotation=65, ha="right", fontsize=10)
+    # Hide x tick marks/labels for upper axes
+    #for ax in axes[:-1]:
+    #    ax.set_xticks([])
+
+    # Ensure there's enough bottom margin so rotated labels are not clipped
+    # tweak this value if your labels are longer / more models
+    plt.subplots_adjust(bottom=0.3, top=0.94, hspace=0.35)
+
+    # Overall title and layout
+    fig.suptitle(title, fontsize=14)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    if out_prefix:
+        safe_metric = metric.replace(" ", "_")
+        out_file = f"{out_prefix}_{safe_metric}.png"
+        fig.savefig(out_file, dpi=300, bbox_inches="tight")
+        print(f"Saved figure to {out_file}")
+
     plt.show()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Plot cooperation probability and model payoff.")
-    parser.add_argument("--infile", required=True, help="Path to cleaned CSV file")
-    parser.add_argument("--model_name", required=True, help="model name to be appened to title")
-    args = parser.parse_args()
 
-    df = pd.read_csv(args.infile)
+def load_and_prepare(path):
+    """Load CSV and coerce expected columns/numeric types. Returns prepared DataFrame."""
+    df = pd.read_csv(path)
+    # Ensure the column exists
+    for col in ["variant", "heuristic", "not_gamified"]:
+        if col not in df.columns:
+            print(f"ERROR: Required column '{col}' not found in {path}.", file=sys.stderr)
+            raise SystemExit(1)
 
-    # Ensure data types
+    # Coerce not_gamified to string (keeps grouping stable)
     df["not_gamified"] = df["not_gamified"].astype(str)
-    numeric_cols = ["coop_prob", "model_payoff"]
-    for col in numeric_cols:
+
+    # Ensure numeric columns exist and coerce to numeric; missing -> NaN
+    for col in ["coop_prob", "model_payoff"]:
+        if col not in df.columns:
+            print(f"ERROR: Required metric column '{col}' not found in {path}.", file=sys.stderr)
+            raise SystemExit(1)
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Drop any rows with missing metrics
-    df = df.dropna(subset=numeric_cols)
+    # drop rows missing both metrics (we will filter per metric later)
+    df = df.dropna(subset=["coop_prob", "model_payoff"], how="all")
+    return df
 
-    print(f"Loaded {len(df)} rows from {args.infile}")
 
-    # Plot cooperation probability
-    plot_with_ci(
-        df,
+def main():
+    parser = argparse.ArgumentParser(description="Plot stacked cooperation probability and model payoff across multiple models.")
+    parser.add_argument("--infile", help="Single input CSV (backwards compatible)")
+    parser.add_argument("--model_name", help="Single model name (backwards compatible)")
+    parser.add_argument("--infiles", nargs="+", help="List of input CSV files (space separated)")
+    parser.add_argument("--model_names", nargs="+", help="List of model names (space separated). Must match the number of infiles.")
+    parser.add_argument("--out_prefix", help="Optional prefix for saved figures (e.g. 'stacked' -> stacked_coop_prob.png)", default=None)
+    args = parser.parse_args()
+
+    # Resolve inputs: prefer infiles if provided, otherwise fall back to infile
+    if args.infiles:
+        input_paths = args.infiles
+        if not args.model_names:
+            print("ERROR: --model_names is required when providing multiple --infiles.", file=sys.stderr)
+            raise SystemExit(1)
+        model_names = args.model_names
+    elif args.infile:
+        input_paths = [args.infile]
+        model_names = [args.model_name or "Model"]
+    else:
+        parser.print_help()
+        raise SystemExit(1)
+
+    if len(input_paths) != len(model_names):
+        print("ERROR: The number of input files must match the number of model names.", file=sys.stderr)
+        print(f"Found {len(input_paths)} files and {len(model_names)} names.", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Load dataframes
+    dfs = []
+    for p in input_paths:
+        if not os.path.exists(p):
+            print(f"ERROR: Input file not found: {p}", file=sys.stderr)
+            raise SystemExit(1)
+        df = load_and_prepare(p)
+        dfs.append(df)
+        print(f"Loaded {len(df)} rows from {p}")
+
+    # For each metric, call the stacked plotter. Each plot receives full dfs list so x-axis labels stay consistent.
+    plot_stacked_ci(
+        dfs,
         metric="coop_prob",
         title="Average Cooperation Probability by Variant × Heuristic × Is Serious",
-        ylabel="Cooperation Probability", 
-        model_name = args.model_name,
+        ylabel="Cooperation Probability",
+        model_names=model_names,
+        out_prefix=args.out_prefix,
     )
 
-    # Plot model payoff
-    plot_with_ci(
-        df,
+    plot_stacked_ci(
+        dfs,
         metric="model_payoff",
         title="Average Model Payoff by Variant × Heuristic × Is Serious",
         ylabel="Model Payoff",
-        model_name = args.model_name
+        model_names=model_names,
+        out_prefix=args.out_prefix,
     )
 
 
