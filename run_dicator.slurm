@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=ipd_test
-#SBATCH --output=ipd_test.%j.out
-#SBATCH --error=ipd_test.%j.err
+#SBATCH --job-name=run_dictator
+#SBATCH --output=run_dicator.%j.out
+#SBATCH --error=run_dictator.%j.err
 #SBATCH --time=04:00:00
 #SBATCH --constraint=h100
 #SBATCH --gres=gpu:2
@@ -42,5 +42,5 @@ accelerate launch run_dictator.py \
   --model-name "$MODEL_NAME" \
   --out results_qwen_05B_final.csv \
   --rounds 100 \
-  --variants default,game-theorist,coa \
+  --variants default,game-theorist \
   --include-not-gamified
