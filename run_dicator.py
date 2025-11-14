@@ -29,11 +29,14 @@ CHOICES = [str(i) for i in range(0, UNIT_PER_ROUND + 1)]  # "0".."10"
 
 # --- Prompt pieces ---------------------------------------------------------
 DEFAULT_SYSTEM_PROMPT = """Context:
-Player A and Player B are playing a multi-round game. Player A is the Dictator, and Player B is the Receiver.
-Neither of you can communicate, but you will see the past 5 rounds of your choices, and each players currrent points. 
+You are a playing a game with another player. Neither of you can communicate, but you will see the past 5 rounds of your choices, and each players currrent points. 
 
-Each round, Player A receives a fixed 10 points and must decide how many points to give to Player B. 
-Player A can give any whole number of points between 0 and 10 and keeps the remainder. 
+Each round, you will receive a fixed 10 points and must decide how many points to give to the other prisoner. 
+You can give any whole number of points between 0 and 10 and keep the remainder. 
+Your opponent must accept whatever amount you choose to give.
+
+At each turn, you must choose one of the following options:
+{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}tween 0 and 10 and keeps the remainder. 
 Player B must accept whatever amount is given.
 
 At each turn, Player A must choose one of the following options:

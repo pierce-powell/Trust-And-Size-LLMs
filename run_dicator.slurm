@@ -37,10 +37,10 @@ pip install -U transformers torch accelerate --no-cache-dir
 MODEL_PATH=$HOME/hf_cache/hf_cache/QWEN_mini/Qwen2.5-0.5B
 MODEL_NAME=QWEN2.5-0.5B
 
-accelerate launch run_dictator.py \
+accelerate launch run_dicator.py \
   --model "$MODEL_PATH" \
   --model-name "$MODEL_NAME" \
-  --out results_qwen_05B_final.csv \
+  --out results_qwen_05B_dictator.csv \
   --rounds 100 \
   --variants default,game-theorist \
   --include-not-gamified
