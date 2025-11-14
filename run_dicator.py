@@ -617,3 +617,6 @@ def main():
 
     # call the main runner (expects the 'run_all' function from the script)
     run_all(args, variants_list)
+
+if __name__ == "__main__":
+    main()
