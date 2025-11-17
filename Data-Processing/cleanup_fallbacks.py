@@ -2,6 +2,8 @@
 """
 cleanup_fallbacks.py
 
+- Removes unwanted variants (coa, coa_notgamified).
+- Removes duplicate condition rows before other cleaning.
 - Reads CSV into a pandas DataFrame.
 - Detects rows where the model failed to write proper JSON (fallback in model_reason).
 - Removes fallback rows and writes a cleaned CSV.
@@ -44,35 +46,19 @@ def recompute_coop_prob_by_history(df_clean: pd.DataFrame,
                                    round_col: str = 'round',
                                    choice_col: str = 'model_choice',
                                    coop_prob_col: str = 'coop_prob') -> pd.DataFrame:
-    """
-    For each group, sort by round ascending.
-    For each row, recompute coop_prob as fraction of all non-fallback rows
-    whose model_choice == 'C', including current round.
-    """
     df = df_clean.copy()
-
-    if round_col not in df.columns:
-        raise KeyError(f"Round column '{round_col}' not found in dataframe")
     df[round_col] = pd.to_numeric(df[round_col], errors='coerce')
-
-    if choice_col not in df.columns:
-        df[choice_col] = ''
-
-    # Ensure choices are uppercase strings with no extra spaces
     df[choice_col] = df[choice_col].astype(str).str.strip().str.upper()
 
     recomputed = pd.Series(index=df.index, dtype=float)
-
     grouped = df.groupby(group_cols, dropna=False, sort=False)
-    for group_key, group in grouped:
-        group_sorted = group.sort_values(by=round_col, kind='mergesort')
-        is_coop = group_sorted[choice_col] == 'C'
 
-        cumsum_coop = is_coop.cumsum()
-        cumsum_count = pd.Series(range(1, len(group_sorted) + 1), index=group_sorted.index)
-
-        new_probs = cumsum_coop / cumsum_count
-        recomputed.loc[group_sorted.index] = new_probs
+    for _, group in grouped:
+        g = group.sort_values(by=round_col, kind='mergesort')
+        is_c = g[choice_col] == 'C'
+        cumsum_c = is_c.cumsum()
+        cumsum_n = pd.Series(range(1, len(g) + 1), index=g.index)
+        recomputed.loc[g.index] = cumsum_c / cumsum_n
 
     df[coop_prob_col] = recomputed
     return df
@@ -107,6 +93,24 @@ def main(argv):
 
     # ------------------ Read CSV ------------------ #
     df = pd.read_csv(infile, dtype=str)
+    print(f"Loaded {len(df):,} rows")
+
+    # -------- NEW: Remove unwanted variants and duplicate condition rows -------- #
+
+    # Remove unwanted variants
+    bad_variants = {"coa", "coa_notgamified"}
+    before = len(df)
+    df = df[~df["variant"].isin(bad_variants)]
+    print(f"Removed {before - len(df):,} rows with bad variants: {bad_variants}")
+
+    # Remove duplicate condition rows BEFORE all other cleaning
+    condition_cols = ["seed", "variant", "heuristic", "round", "not_gamified"]
+    before = len(df)
+    df = df.drop_duplicates(subset=condition_cols, keep="first")
+    print(f"Removed {before - len(df):,} duplicate condition rows")
+    print(f"Rows after deduplication: {len(df):,}")
+
+    # --------------------------------------------------------------------------- #
 
     # Normalize variants
     df['variant'] = df['variant'].apply(clean_variant_name)
@@ -121,15 +125,12 @@ def main(argv):
     # ------------------ Detect fallback rows ------------------ #
     fallback_mask = detect_fallback_rows(df, reason_col=args.reason_col)
     num_failures = int(fallback_mask.sum())
-    total_rows = len(df)
-    print(f"Total rows: {total_rows}")
     print(f"Detected fallback rows: {num_failures}")
 
-    # Remove fallback rows
     df_clean = df.loc[~fallback_mask].copy()
     removed_df = df.loc[fallback_mask].copy()
 
-    # ------------------ Recompute cooperation probability ------------------ #
+    # ------------------ Recompute coop_prob ------------------ #
     group_cols = [c for c in args.group_cols if c in df_clean.columns]
     df_clean = recompute_coop_prob_by_history(df_clean,
                                               group_cols=group_cols,
@@ -146,7 +147,7 @@ def main(argv):
         removed_df.to_csv(removed_out, index=False)
         print(f"Removed fallback rows written to: {removed_out}")
 
-    print(f"Summary: total_rows={total_rows}, removed={num_failures}, remaining={len(df_clean)}")
+    print(f"Summary: total_rows={len(df):,}, removed={num_failures}, remaining={len(df_clean):,}")
 
 # ------------------------ Entry Point ------------------------ #
 
