@@ -532,7 +532,7 @@ def run_all(args, variants_list):
 
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
-                                                 torch_dtype=torch.bfloat16, device_map="auto")
+                                                 torch_dtype=torch.float16, device_map="sequential")
     model.eval()
 
     # load existing progress from CSV (if any)
