@@ -16,7 +16,7 @@ from pathlib import Path
 import os
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
 
 # (short keys 'C' / 'D')
 PAYOFFS = {
@@ -518,8 +518,9 @@ def run_all(args, variants_list):
     print(f"CSV model name: {model_display_name}")
     print(f"Device: {device}")
 
-    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(model_path, trust_remote_code=True,
+    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, config=config, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(model_path, config=config, trust_remote_code=True,
                                                  torch_dtype=torch.bfloat16, device_map="auto")
     model.eval()
 
