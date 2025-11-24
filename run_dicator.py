@@ -20,7 +20,10 @@ from pathlib import Path
 import os
 
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from olmo2 import Olmo2Config
+
+
 
 # --- Game constants --------------------------------------------------------
 # In Dictator: each round A gets 10 and chooses how many to give to B (0..10)
@@ -530,7 +533,7 @@ def run_all(args, variants_list):
     print(f"CSV model name: {model_display_name}")
     print(f"Device: {device}")
 
-    config = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+    config = Olmo2Config.from_pretrained(model_path)
     tokenizer = AutoTokenizer.from_pretrained(model_path, config=config, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_path, config=config,
                                                 torch_dtype=torch.float16, device_map="auto")
