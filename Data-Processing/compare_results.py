@@ -242,7 +242,7 @@ def main():
     plot_stacked_ci(
         dfs,
         metric="coop_prob",
-        title="Average Cooperation Probability by Variant × Heuristic × Is Serious",
+        title="Average Cooperation Probability For QWEN 2.5 by Variant × Heuristic × Is Serious",
         ylabel="Cooperation Probability",
         model_names=model_names,
         out_prefix=args.out_prefix,
