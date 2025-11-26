@@ -105,6 +105,9 @@ def main(argv):
 
     # Remove duplicate condition rows BEFORE all other cleaning
     condition_cols = ["seed", "variant", "heuristic", "round", "not_gamified"]
+    if "herustic" not in df: 
+        condition_cols = ["seed", "variant", "round", "not_gamified"]
+
     before = len(df)
     df = df.drop_duplicates(subset=condition_cols, keep="first")
     print(f"Removed {before - len(df):,} duplicate condition rows")
@@ -132,11 +135,13 @@ def main(argv):
 
     # ------------------ Recompute coop_prob ------------------ #
     group_cols = [c for c in args.group_cols if c in df_clean.columns]
-    df_clean = recompute_coop_prob_by_history(df_clean,
-                                              group_cols=group_cols,
-                                              round_col=args.round_col,
-                                              choice_col=args.choice_col,
-                                              coop_prob_col=args.coop_prob_col)
+    if "heuristic" in df:  
+        print("recomputing coop prob")
+        df_clean = recompute_coop_prob_by_history(df_clean,
+                                                group_cols=group_cols,
+                                                round_col=args.round_col,
+                                                choice_col=args.choice_col,
+                                                coop_prob_col=args.coop_prob_col)
 
     # ------------------ Write outputs ------------------ #
     df_clean.to_csv(outfile, index=False)
