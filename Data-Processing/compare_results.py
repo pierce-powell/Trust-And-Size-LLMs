@@ -75,6 +75,59 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
                 cis[i, j] = 0.0
                 counts[i, j] = 0
 
+    # Determine a global y-axis range across all models for this metric
+    # Consider only entries where count > 0 (actual data)
+    has_data_mask = counts > 0
+    if np.any(has_data_mask):
+        # Compute candidate min/max using mean +/- ci
+        valid_upper = (means + cis)[has_data_mask]
+        valid_lower = (means - cis)[has_data_mask]
+        global_max = np.nanmax(valid_upper) if valid_upper.size > 0 else 0.0
+        global_min = np.nanmin(valid_lower) if valid_lower.size > 0 else 0.0
+        # If metric looks like a probability, clamp to [0,1]
+        if "prob" in metric.lower() or "probability" in metric.lower():
+            global_min = 0.0
+            global_max = 1.0
+        else:
+            # ensure sensible bounds: include 0 if all positive and close to zero, and avoid negative bottoms unless actual
+            if global_min > 0:
+                global_min = min(0.0, global_min)
+            # If max is zero or negative (odd), set to 1 as a fallback
+            if global_max <= 0:
+                global_max = 1.0
+    else:
+        # No data at all: fallback to 0-1
+        global_min, global_max = 0.0, 1.0
+
+    # Add a small top padding (same factor used previously)
+    padding_factor = 1.12
+    # If global_max equals global_min (flat), expand a little for visibility
+    if np.isclose(global_max, global_min):
+        global_max = global_min + 1.0
+
+    # Ensure we don't invert the axis
+    if global_max < global_min:
+        global_min, global_max = min(global_min, global_max), max(global_min, global_max)
+
+    # Apply padding but keep lower bound as-is if it's 0 (probabilities)
+    # For lower bound, give a small fraction of the range if it's not zero
+    range_span = global_max - global_min
+    if range_span <= 0:
+        range_span = 1.0
+    padded_max = global_min + range_span * padding_factor
+    # If metric is probability, clamp padded_max to 1.0
+    if "prob" in metric.lower() or "probability" in metric.lower():
+        padded_min, padded_max = 0.0, 1.0
+    else:
+        # small lower padding (5% of range) if global_min isn't zero
+        lower_padding = 0.05 * range_span
+        padded_min = global_min - lower_padding
+        # avoid negative lower bound unless data actually negative by some margin
+        if padded_min > 0 and global_min >= 0:
+            padded_min = 0.0
+        # final padded max
+        padded_max = padded_max
+
     # Figure size: keep width ~14, height proportional to number of models
     fig_height_per_model = 3.5
     fig, axes = plt.subplots(n_models, 1, figsize=(14, fig_height_per_model * n_models), sharex=True)
@@ -92,27 +145,23 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
 
         if bar_positions.size == 0:
             ax.text(0.5, 0.5, "No data for this model / metric", ha="center", va="center", transform=ax.transAxes)
-            ax.set_ylim(0, 1 if "prob" in metric else max(1, np.nanmax(means) if np.nanmax(means) > 0 else 1))
         else:
             ax.bar(bar_positions, bar_heights, yerr=bar_err, capsize=4, edgecolor="black")
-            y_max = np.nanmax(bar_heights + bar_err) if bar_heights.size > 0 else 1
-            ax.set_ylim(0, y_max * 1.12 if y_max > 0 else 1)
 
         # Model subtitle: place on left of subplot
         ax.set_title(model_names[i], fontsize=10, loc="left", pad=6, style="italic")
         ax.set_ylabel(ylabel)
         ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
 
+        # Set the same y-limits for every subplot (padded)
+        ax.set_ylim(padded_min, padded_max)
+
     # Configure x-axis ticks only on the bottom subplot
     # (set ticks at every label position so alignment remains consistent)
     axes[-1].set_xticks(x)
     axes[-1].set_xticklabels(label_strings, rotation=65, ha="right", fontsize=10)
-    # Hide x tick marks/labels for upper axes
-    #for ax in axes[:-1]:
-    #    ax.set_xticks([])
 
     # Ensure there's enough bottom margin so rotated labels are not clipped
-    # tweak this value if your labels are longer / more models
     plt.subplots_adjust(bottom=0.3, top=0.94, hspace=0.35)
 
     # Overall title and layout
@@ -126,8 +175,6 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
         print(f"Saved figure to {out_file}")
 
     plt.show()
-
-
 
 def load_and_prepare(path):
     """Load CSV and coerce expected columns/numeric types. Returns prepared DataFrame."""

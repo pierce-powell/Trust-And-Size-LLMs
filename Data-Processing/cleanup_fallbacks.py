@@ -105,7 +105,7 @@ def main(argv):
 
     # Remove duplicate condition rows BEFORE all other cleaning
     condition_cols = ["seed", "variant", "heuristic", "round", "not_gamified"]
-    if "herustic" not in df: 
+    if "heuristic" not in df: 
         condition_cols = ["seed", "variant", "round", "not_gamified"]
 
     before = len(df)
