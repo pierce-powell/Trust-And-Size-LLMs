@@ -1,11 +1,12 @@
 # Steps for running things
+These reproducability steps are assuming you will be running things on a job based system. If you are not, you can simply just use the contents of the slurm yourself. 
 
 1. **Download models on your local machine** and then upload them to the remote server through an FTP client.  
    (You can also download the models locally by running `download_local.py` and editing the model names.)
 
 2. **Set up your virtual environment** by installing the required dependencies.
 
-3. **Edit `run_ipd.slurm`**:
+3. **Edit `run_ipd.slurm` and `run_dicator.slurm`**:
    - a. Change  
      `source ~/qwen_env/bin/activate`  
      to use the virtual environment you just configured.
@@ -21,6 +22,28 @@
 ```bash
    sbatch run_ipd.slurm
 ```
+and 
+```bash
+   sbatch run_dictator.slurm
+```
+
+5. Repeat this for every model you wish to gather statistics for. If you're job dies mid run, the code will read the csv and pick up where it left off the last time. 
+
+6. There was an error with how cooperation probability was calculated mid run, as well as a small error with writting duplicate values to the csv during the runs. So once your data is finished collecting, use the clean up script to clean up both the dictator results and the ipd results: 
+
+
+```bash
+   python cleanup_fallbacks.py --infile input.csv --outfile output.csv
+```
+
+# Graphing scripts are also provided in the repo: 
+Each has instructions on how to run the corresponding graph at the top of their files, the graphing scrits are as follows: 
+1. compare_results.py
+2. compare_results_dict.py
+3. comare_results_between.py
+4. comare_results_between_dict.py
+5. Trust_Recovery.py 
+
 
 # Other Useful Commands
 
