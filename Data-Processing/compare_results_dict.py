@@ -4,7 +4,7 @@ Robust multi-model side-by-side bar plot for 'given' and 'kept'.
 
 Groups by: ("variant", "not_gamified") always (no heuristic).
 Usage (example):
-  python compare_given_kept_fixed2.py --infiles a.csv b.csv --model_names "A" "B" --out_prefix stacked
+  python compare_results_dict.py --infiles a.csv b.csv --model_names "A" "B" --out_prefix stacked
 """
 import argparse
 import os
@@ -188,7 +188,7 @@ def plot_given_kept_stacked(dfs, model_names, out_prefix=None):
     axes[-1].set_xticklabels(label_strings, ha="right", fontsize=9)
 
     plt.subplots_adjust(bottom=0.32, top=0.94, hspace=0.35)
-    fig.suptitle("Dictator: Average Given and Kept Points For Qwen 2.5 by Variant × Is Serious", fontsize=14)
+    fig.suptitle("Dictator: Average Given and Kept Points For Gemma 3 by Variant × Is Serious", fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     if out_prefix:

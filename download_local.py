@@ -21,7 +21,7 @@ login(token=HF_TOKEN)
 
 # Target repos
 repos = {
-    "Qwen2.5-0.5B": "Qwen/Qwen2.5-0.5B-Instruct",
+    "Qwen2.5-14B": "Qwen/Qwen2.5-14B-Instruct",
 
 
 }
