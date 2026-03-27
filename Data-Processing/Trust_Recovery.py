@@ -11,8 +11,7 @@ Usage examples:
 
   # group every 3 files:
   python compare_results_recovery.py --infiles f1.csv f2.csv f3.csv f4.csv f5.csv f6.csv --group_size 3 --group_labels "GroupA" "GroupB"
-
-  python Trust_Recovery.py --infiles qwen_05B_ipd_cleaned.csv ipd_gemma_cleaned_1b.csv ipd_OLMo_clean_1B.csv qwen_7B_ipd_cleaned.csv ipd_gemma_cleaned_4b.csv ipd_OLMo_clean_7B.csv qwen_14_ipd_cleaned.csv ipd_gemma_cleaned_12b.csv ipd_OLMo_clean_13B.csv qwen_32_ipd_cleaned.csv ipd_gemma_cleaned_27b.csv ipd_OLMo_clean_32B.csv --group_size 3  --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)" 
+  python Trust_Recovery.py --infiles qwen_05B_ipd.csv gemma_1B_ipd.csv olmo_1B_ipd.csv qwen_7B_ipd.csv gemma_4B_ipd.csv olmo_7B_ipd.csv qwen_14B_ipd.csv gemma_12B_ipd.csv olmo_13B_ipd.csv qwen_32B_ipd.csv gemma_27B_ipd.csv olmo_32B_ipd.csv --group_size 3  --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)" 
 
 """
 import argparse

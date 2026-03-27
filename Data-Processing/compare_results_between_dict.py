@@ -17,7 +17,7 @@ python compare_results_grouped_dictator_fixed.py \
                    "Large-Medium (14B+12B)" "Large (32B+27B)" \
     --out_prefix stacked_grouped_fixed
 
-    ython compare_results_between_dict.py --infiles qwen_05B_dictator_cleaned.csv dict_gemma_cleaned_1b.csv qwen_7B_dictator_cleaned.csv dict_gemma_cleaned_4b.csv qwen_14B_dictator_cleaned.csv dict_gemma_cleaned_12b.csv qwen_32B_dictator_cleaned.csv dict_gemma_cleaned_27b.csv --model_names "Qwen 0.5B" "Gemma 1B" "Qwen 7B" "Gemma 4B" "Qwen 14B" "Gemma 12B" "Qwen 32B" "Gemma 27B" --group_size 2 --group_labels "Small Models (Qwen 0.5B, Gemma 1B)" "Small-Medium Models (Qwen 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, Gemma 12B)" "Large Models (Qwen 32B)"
+    python compare_results_between_dict.py --infiles qwen_05B_dictator.csv gemma_1B_dictator.csv olmo_1B_dictator.csv qwen_7B_dictator.csv gemma_4B_dictator.csv olmo_7B_dictator.csv qwen_14B_dictator.csv gemma_12B_dictator.csv olmo_13B_dictator.csv qwen_32B_dictator.csv gemma_27B_dictator.csv olmo_32B_dictator.csv --model_names "Qwen 0.5B" "Gemma 3 1B" "OLMo 2 1B" "Qwen 7B" "Gemma 3 4B" "OLMo 2 7B" "Qwen 14B" "Gemma 3 12B" "OLMo 2 13B" "Qwen 32B" "Gemma 3 27B" "OLMo 2 32B" --group_size 3 --group_labels "Small Models (Qwen 0.5B, Gemma 3 1B, OLMo 1B)" "Small-Medium Models (Qwen 7B, Gemma 3 4B, OLMo 7B)" "Large-Medium Models (Qwen 14B, Gemma 3 12B, OLMo 13B)" "Large Models (Qwen 32B, Gemma 3 27B, OLMo 32B)"
 """
 import argparse
 import os

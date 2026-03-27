@@ -2,7 +2,10 @@
 """
 Usage examples:
   python compare_results.py --infile qwen_05B_clean.csv --model_name QWEN05B
-  python compare_results.py --infiles qwen05Bclean.csv qwen7Bclean.csv qwen32Bclean.csv --model_names "QWEN-2.5 0.5B" "QWEN-2.5 7B" "QWEN-2.5 32B" --out_prefix stacked
+
+  python compare_results.py --infiles 05-clean.csv 7-clean.csv qwen_14B_ipd.csv 32-clean.csv --model_names "QWEN-2.5 0.5B" "QWEN-2.5 7B" "QWEN-2.5 14B" "QWEN-2.5 32B" --out_prefix stacked
+  python compare_results.py --infiles olmo_1B_ipd.csv olmo_7B_ipd.csv olmo_13B_ipd.csv olmo_32B_ipd.csv --model_names "OLMo2 1B" "OLMo2 7B" "OLMo2 13B" "OLMo2 32B" --out_prefix stacked
+  python compare_results.py --infiles 1-clean.csv 4-clean.csv 12-clean.csv 27-clean.csv --model_names "Gemma 3 1B" "Gemma 3 4B" "Gemma 3 12B" "Gemma 3 27B" --out_prefix stacked
 
 This script plots stacked bar charts (one subplot per model) for the two metrics:
  - coop_prob
