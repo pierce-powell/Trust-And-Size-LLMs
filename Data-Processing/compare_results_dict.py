@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Robust multi-model side-by-side bar plot for 'given' and 'kept'.
-
-Groups by: ("variant", "not_gamified") always (no heuristic).
 Usage (example):
-  python compare_results_dict.py --infiles qwen_05B_dictator.csv qwen_7B_dictator.csv qwen_14B_dictator.csv qwen_32B_dictator.csv --model_names "QWEN-2.5 0.5B" "QWEN-2.5 7B" "QWEN-2.5 14B" "QWEN-2.5 32B" --out_prefix stacked
-  python compare_results_dict.py --infiles olmo_1B_dictator.csv olmo_7B_dictator.csv olmo_13B_dictator.csv olmo_32B_dictator.csv --model_names "OLMo 2 1B" "OLMo 2 7B" "OLMo 2 14B" "OLMo 2 32B" --out_prefix stacked
-  python compare_results_dict.py --infiles gemma_1B_dictator.csv gemma_4B_dictator.csv gemma_12B_dictator.csv --model_names "Gemma 3 1B" "Gemma 3 4B" "Gemma 3 12B" --out_prefix stacked
+    # Single file
+    python compare_results_dict.py --infiles cleaned_deepseek_33B_DIC.csv --model_names "DeepSeek 33B"
+
+    # Family
+    python compare_results_dict.py --infiles cleaned_olmo_1B_DIC.csv cleaned_olmo_7B_DIC.csv cleaned_olmo_13B_DIC.csv cleaned_olmo_32B_DIC.csv --model_names "OLMo2 1B" "OLMo2 7B" "OLMo2 14B" "OLMo2 32B"
 """
 import argparse
 import os
@@ -190,7 +189,7 @@ def plot_given_kept_stacked(dfs, model_names, out_prefix=None):
     axes[-1].set_xticklabels(label_strings, ha="right", fontsize=9)
 
     plt.subplots_adjust(bottom=0.32, top=0.94, hspace=0.35)
-    fig.suptitle("Dictator: Average Given and Kept Points For QWEN-2.5 by Variant × Is Serious", fontsize=14)
+    fig.suptitle("Dictator: Average Given and Kept Points For by Variant × Is Serious", fontsize=14)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     if out_prefix:

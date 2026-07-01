@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
-Aggregated Dictator Plot by Model Size with robust parsing and CI-95 bars.
-
-Save as: compare_results_grouped_dictator_fixed.py
-
 Usage example:
-python compare_results_grouped_dictator_fixed.py \
+python compare_results_between_dict.py \
     --infiles qwen_05B_dictator_cleaned.csv dict_gemma_cleaned_1b.csv \
               qwen_7B_dictator_cleaned_1.csv dict_gemma_cleaned_4b.csv \
               qwen_14B_dictator_cleaned.csv dict_gemma_cleaned_12b.csv \

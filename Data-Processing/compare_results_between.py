@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """
 Usage examples:
-  # original single-file behavior
-  python compare_results.py --infile qwen_05B_clean.csv --model_name QWEN05B
+    # Single File
+    python compare_results.py --infile cleaned_qwen_0.5B_IPD.csv --model_name "Qwen2.5 0.5B"
 
-  # multiple files, no grouping (each file becomes a model/subplot)
-  python compare_results.py --infiles a.csv b.csv c.csv --model_names A B C
+    # Group by Model Size
+    python compare_results_between.py --infiles cleaned_qwen_0.5B_IPD.csv cleaned_gemma_1B_IPD.csv cleaned_olmo_1B_IPD.csv cleaned_deepseek_1.3B_IPD.csv cleaned_qwen_7_14B_IPD.csv cleaned_gemma_4_12B_IPD.csv cleaned_olmo_7_13B_IPD.csv cleaned_deepseek_6.7B_IPD.csv cleaned_qwen_32B_IPD.csv cleaned_gemma_27B_IPD.csv cleaned_olmo_32B_IPD.csv cleaned_deepseek_33B_IPD.csv --group_size 4 --group_labels "Small Models (Qwen2.5 0.5B, OLMo2 1B, Gemma3 1B, DeepSeek 1.3B)" "Medium Models (Qwen2.5 7B, 14B; OLMo2 7B, 13B; Gemma3 4B, 12B; DeepSeek 6.7B)" "Large Models (Qwen2.5 32B, OLMo2 32B, Gemma3 27B, DeepSeek 33B)"
 
-  # group every 3 files and average them into one plotted model per group
-  python compare_results_between.py --infiles qwen_05B_ipd.csv gemma_1B_ipd.csv olmo_1B_ipd.csv qwen_7B_ipd.csv gemma_4B_ipd.csv olmo_7B_ipd.csv qwen_14B_ipd.csv gemma_12B_ipd.csv olmo_13B_ipd.csv qwen_32B_ipd.csv gemma_27B_ipd.csv olmo_32B_ipd.csv --group_size 3  --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)" 
-
-Notes:
- - When grouping, files are processed in the order given; every consecutive `group_size` files are pooled & averaged.
- - Averaging pools rows across files and then computes the mean of numeric columns per (variant, heuristic, not_gamified) grouping.
+    # Group by Model Source
+    python compare_results_between.py --infiles cleaned_qwen_0.5B_IPD.csv cleaned_olmo_1B_IPD.csv cleaned_qwen_7_14B_IPD.csv cleaned_olmo_7_13B_IPD.csv cleaned_qwen_32B_IPD.csv cleaned_olmo_32B_IPD.csv cleaned_gemma_1B_IPD.csv cleaned_deepseek_1.3B_IPD.csv cleaned_gemma_4_12B_IPD.csv cleaned_deepseek_6.7B_IPD.csv cleaned_gemma_27B_IPD.csv cleaned_deepseek_33B_IPD.csv --group_size 6 --group_labels "Open-Source (Qwen2.5, OLMo2)" "Commercially Used (Gemma3, DeepSeek)"
 """
 
 import argparse
