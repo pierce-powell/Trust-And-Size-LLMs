@@ -1,0 +1,22 @@
+Comparison,Z,P.unadj,P.adj,outcome,model_family
+large - medium,-33.503003889536785,4.3578668276744087e-246,1.3073600483023225e-245,coop_prob,GEMMA
+large - small,-199.50791993394722,0,0,coop_prob,GEMMA
+medium - small,-277.75275585243105,0,0,coop_prob,GEMMA
+large - medium,-27.716381066641954,4.432122089617292e-169,1.3296366268851877e-168,coop_streak,GEMMA
+large - small,-173.41486576285712,0,0,coop_streak,GEMMA
+medium - small,-243.68873502038304,0,0,coop_streak,GEMMA
+large - medium,27.790312855307917,5.6800043051959154e-170,1.7040012915587745e-169,relative_payoff,GEMMA
+large - small,174.6807389421828,0,0,relative_payoff,GEMMA
+medium - small,245.67434744495944,0,0,relative_payoff,GEMMA
+large - medium,24.085079293520863,3.5832464899103104e-128,1.074973946973093e-127,coop_prob,OLMo
+large - small,-250.58683422845849,0,0,coop_prob,OLMo
+medium - small,-306.2207615524264,0,0,coop_prob,OLMo
+large - medium,-27.1789317883769,1.1526179559146902e-162,3.4578538677440705e-162,coop_streak,OLMo
+large - small,-246.77190130419257,0,0,coop_streak,OLMo
+medium - small,-251.96205201418599,0,0,coop_streak,OLMo
+large - medium,87.38875522003231,0,0,relative_payoff,OLMo
+large - small,249.0765517865206,0,0,relative_payoff,OLMo
+medium - small,195.89118183416002,0,0,relative_payoff,OLMo
+large - medium,-47.14842839403289,0,0,coop_prob,Qwen
+large - medium,-47.51493192171357,0,0,coop_streak,Qwen
+large - medium,89.57040477599577,0,0,relative_payoff,Qwen

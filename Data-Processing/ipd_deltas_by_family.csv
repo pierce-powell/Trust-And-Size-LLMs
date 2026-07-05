@@ -1,0 +1,22 @@
+pair,delta,outcome,model_family
+medium vs small,NA,coop_prob,GEMMA
+medium vs large,NA,coop_prob,GEMMA
+small vs large,NA,coop_prob,GEMMA
+medium vs small,NA,coop_streak,GEMMA
+medium vs large,NA,coop_streak,GEMMA
+small vs large,NA,coop_streak,GEMMA
+medium vs small,NA,relative_payoff,GEMMA
+medium vs large,NA,relative_payoff,GEMMA
+small vs large,NA,relative_payoff,GEMMA
+medium vs small,NA,coop_prob,OLMo
+medium vs large,NA,coop_prob,OLMo
+small vs large,NA,coop_prob,OLMo
+medium vs small,NA,coop_streak,OLMo
+medium vs large,NA,coop_streak,OLMo
+small vs large,NA,coop_streak,OLMo
+medium vs small,NA,relative_payoff,OLMo
+medium vs large,NA,relative_payoff,OLMo
+small vs large,NA,relative_payoff,OLMo
+medium vs large,NA,coop_prob,Qwen
+medium vs large,NA,coop_streak,Qwen
+medium vs large,NA,relative_payoff,Qwen
