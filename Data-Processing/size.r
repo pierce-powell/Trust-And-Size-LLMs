@@ -13,7 +13,6 @@ options(future.globals.maxSize = 10 * 1024^3)
 future::plan(multisession, workers = 4)   # or fewer
 
 # ===== 1. Define folders =====
-dictator_dir <- "Dictator"
 ipd_dir      <- "IPD"
 
 # ===== 2. Parse filenames into family + size + experiment =====
@@ -31,8 +30,10 @@ parse_file_info <- function(path) {
     size_category = case_when(
       # small
       str_detect(fname, regex("(^|[_-])(0?5B|05B|1B|1.3B)($|[_-])", ignore_case = TRUE)) ~ "small",
+	# small-medium
+      str_detect(fname, regex("(^|[_-])(4B|6.7B|7B)($|[_-])", ignore_case = TRUE)) ~ "small-medium",
       # medium
-      str_detect(fname, regex("(^|[_-])(4B|6.7B|7B|12B|13B|14|14B)($|[_-])", ignore_case = TRUE)) ~ "medium",
+      str_detect(fname, regex("(^|[_-])(12B|13B|14|14B)($|[_-])", ignore_case = TRUE)) ~ "large-medium",
       # large
       str_detect(fname, regex("(^|[_-])(27B|32B|32|33B)($|[_-])",  ignore_case = TRUE)) ~ "large",
       TRUE ~ "unknown"
@@ -57,17 +58,9 @@ load_and_tag <- function(file, model_family, size_category, experiment) {
     )
 }
 
-# Dictator
-dictator_files <- list.files(dictator_dir, pattern = "*.csv", full.names = TRUE)
-dictator_map   <- bind_rows(lapply(dictator_files, parse_file_info))
-
 # IPD
 ipd_files <- list.files(ipd_dir, pattern = "*.csv", full.names = TRUE)
 ipd_map   <- bind_rows(lapply(ipd_files, parse_file_info))
-
-dictator_data <- dictator_map %>%
-  select(file, model_family, size_category, experiment) %>%
-  pmap_dfr(load_and_tag)
 
 ipd_data <- ipd_map %>%
   select(file, model_family, size_category, experiment) %>%
@@ -94,12 +87,10 @@ convert_types <- function(df) {
   df
 }
 
-dictator_data <- convert_types(dictator_data)
 ipd_data      <- convert_types(ipd_data)
 
 # Drop unknown sizes
-dictator_data <- dictator_data %>% filter(size_category %in% c("small","medium","large"))
-ipd_data      <- ipd_data      %>% filter(size_category %in% c("small","medium","large"))
+ipd_data      <- ipd_data      %>% filter(size_category %in% c("small","small-medium""large-medium","large"))
 
 # ===== 4. Helper functions =====
 boot_median <- function(x, i) median(x[i], na.rm = TRUE)
@@ -192,12 +183,7 @@ analyze_outcome <- function(df, outcome) {
 }
 
 # ===== 6. Run for all outcomes (PARALLEL) =====
-dictator_outcomes <- c("choice_prob","given","kept","generosity_streak","total_A","total_B")
 ipd_outcomes      <- c("coop_prob","coop_streak","relative_payoff")
-
-dictator_results <- future_map(dictator_outcomes, function(o) {
-  analyze_outcome(dictator_data[, c("size_category", o), drop = FALSE], o)
-})
 
 ipd_results <- future_map(ipd_outcomes, function(o) {
   analyze_outcome(ipd_data[, c("size_category", o), drop = FALSE], o)
@@ -216,8 +202,5 @@ flatten_results <- function(results_list) {
   }))
 }
 
-dictator_summary <- flatten_results(dictator_results)
 ipd_summary      <- flatten_results(ipd_results)
-
-write_csv(dictator_summary, "dictator_summary.csv")
 write_csv(ipd_summary,      "ipd_summary.csv")

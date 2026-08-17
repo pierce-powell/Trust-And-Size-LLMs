@@ -1,3 +1,13 @@
+install.packages("dplyr")
+install.packages("vroom")
+install.packages("stringr")
+install.packages("purrr")
+install.packages("furrr")
+install.packages("FSA")
+install.packages("boot")
+install.packages("tidyr")
+install.packages("readr")
+
 suppressPackageStartupMessages({
   library(dplyr)
   library(vroom)      # fast CSV loading
@@ -15,7 +25,6 @@ options(future.globals.maxSize = 10 * 1024^3)
 future::plan(future::multisession, workers = max(1L, parallel::detectCores() - 1L))
 
 # ===== 1. Define folders =====
-dictator_dir <- "Dictator"
 ipd_dir      <- "IPD"
 
 # ===== 2. Parse filenames into family + size + experiment =====
@@ -33,8 +42,10 @@ parse_file_info <- function(path) {
     size_category = case_when(
       # small
       str_detect(fname, regex("(^|[_-])(0?5B|05B|1B|1.3B)($|[_-])", ignore_case = TRUE)) ~ "small",
-      # medium
-      str_detect(fname, regex("(^|[_-])(4B|6.7B|7B|12B|13B|14|14B)($|[_-])", ignore_case = TRUE)) ~ "medium",
+	# small-medium
+      str_detect(fname, regex("(^|[_-])(4B|6.7B|7B)($|[_-])", ignore_case = TRUE)) ~ "small-medium",
+      # large-medium
+      str_detect(fname, regex("(^|[_-])(12B|13B|14|14B)($|[_-])", ignore_case = TRUE)) ~ "large-medium",
       # large
       str_detect(fname, regex("(^|[_-])(27B|32B|32|33B)($|[_-])",  ignore_case = TRUE)) ~ "large",
       TRUE ~ "unknown"
@@ -58,14 +69,11 @@ load_and_tag <- function(file, model_family, size_category, experiment) {
     )
 }
 
-# Dictator
-dictator_files <- list.files(dictator_dir, pattern = "*.csv", full.names = TRUE)
-dictator_map   <- bind_rows(map(dictator_files, parse_file_info))
-dictator_data  <- pmap_dfr(dictator_map, load_and_tag)
 
-# IPD
 ipd_files <- list.files(ipd_dir, pattern = "*.csv", full.names = TRUE)
-ipd_map   <- bind_rows(map(ipd_files, parse_file_info))
+ipd_map <- bind_rows(map(ipd_files, parse_file_info)) %>%
+filter(model_family == "Qwen")
+
 ipd_data  <- pmap_dfr(ipd_map, load_and_tag)
 
 # ===== 3b. Safe type conversion AFTER merge =====
@@ -91,17 +99,11 @@ convert_types <- function(df) {
   df
 }
 
-dictator_data <- pmap_dfr(
-  dictator_map %>% select(file, model_family, size_category, experiment),
-  load_and_tag
-)
-
 ipd_data <- pmap_dfr(
   ipd_map %>% select(file, model_family, size_category, experiment),
   load_and_tag
 )
 
-table(dictator_data$model_family)
 table(ipd_data$model_family)
 
 # ===== 4. Helper functions =====
@@ -145,7 +147,7 @@ analyze_outcome <- function(df, outcome) {
   d <- df %>%
     select(size_category, value = !!sym(outcome)) %>%
     mutate(value = as.numeric(value)) %>%
-    filter(size_category %in% c("small","medium","large"))
+    filter(size_category %in% c("small","small-medium","large-medium","large"))
 
   groups <- d %>% distinct(size_category) %>% pull(size_category)
 
@@ -196,19 +198,10 @@ analyze_outcome <- function(df, outcome) {
 }
 
 # ===== 6. Outcomes =====
-dictator_outcomes <- c("choice_prob","given","kept","generosity_streak","total_A","total_B")
 ipd_outcomes      <- c("coop_prob","coop_streak","relative_payoff")
 
 # ===== 7. Run analyses per family in parallel =====
-dictator_by_family <- dictator_data %>% group_split(model_family)
 ipd_by_family      <- ipd_data %>% group_split(model_family)
-
-dictator_results <- future_map(dictator_by_family, function(df) {
-  family <- df$model_family[1]
-  outs   <- intersect(dictator_outcomes, names(df))
-  res    <- map(outs, ~ analyze_outcome(df, .x))
-  list(family = family, results = res)
-})
 
 ipd_results <- future_map(ipd_by_family, function(df) {
   family <- df$model_family[1]
@@ -250,20 +243,12 @@ flatten_deltas <- function(family_block) {
   }))
 }
 
-dictator_summary <- bind_rows(map(dictator_results, flatten_summary))
-dictator_dunn    <- bind_rows(map(dictator_results, flatten_dunn))
-dictator_deltas  <- bind_rows(map(dictator_results, flatten_deltas))
-
 ipd_summary <- bind_rows(map(ipd_results, flatten_summary))
 ipd_dunn    <- bind_rows(map(ipd_results, flatten_dunn))
 ipd_deltas  <- bind_rows(map(ipd_results, flatten_deltas))
 
 # ===== 9. Save outputs =====
 if (!dir.exists("results")) dir.create("results")
-
-write_csv(dictator_summary, "results/dictator_summary_by_family.csv")
-write_csv(dictator_dunn,    "results/dictator_dunn_by_family.csv")
-write_csv(dictator_deltas,  "results/dictator_deltas_by_family.csv")
 
 write_csv(ipd_summary, "results/ipd_summary_by_family.csv")
 write_csv(ipd_dunn,    "results/ipd_dunn_by_family.csv")

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Usage examples:
-    # Single size
-    python .\compare_results.py --infiles cleaned_deepseek_6.7B_IPD.csv --model_names "DeepSeek 6.7B"
-    
+Usage examples:    
     # Entire family
-    python .\compare_results.py --infiles cleaned_gemma_1B_IPD.csv cleaned_gemma_4B_IPD.csv cleaned_gemma_12B_IPD.csv cleaned_gemma_27B_IPD.csv --model_names "Gemma3 1B" "Gemma3 4B" "Gemma3 12B" "Gemma3 27B"
+    python .\compare_results.py --infiles fixed_qwen_0.5B.csv fixed_qwen_7B.csv fixed_qwen_14B.csv fixed_qwen_32B.csv --model_names "Qwen2.5 0.5B" "Qwen2.5 7B" "Qwen2.5 14B" "Qwen2.5 32B"
+    python .\compare_results.py --infiles fixed_olmo_1B.csv fixed_olmo_7B.csv fixed_olmo_13B.csv fixed_olmo_32B.csv --model_names "OLMo2 1B" "OLMo2 7B" "OLMo2 13B" "OLMo2 32B"
+    python .\compare_results.py --infiles fixed_gemma_1B.csv fixed_gemma_4B.csv fixed_gemma_12B.csv fixed_gemma_27B.csv --model_names "Gemma3 1B" "Gemma3 4B" "Gemma3 12B" "Gemma3 27B"
 
 This script plots stacked bar charts (one subplot per model) for the two metrics:
- - coop_prob
- - model_payoff
+ - Cooperation Probability
+ - Model Payoff
 
 Each stacked figure has one row per input model to save space on the x-axis labels.
 """
@@ -53,8 +52,32 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
     all_label_tuples = sorted({t for s in summaries for t in s.index.tolist()})
     # Readable labels in the same order
     label_strings = []
+
+    abbrev = {
+        "default": "D",
+        "default_notgamified": "Dng",
+        "game-theorist": "GT",
+        "game-theorist_notgamified": "GTng",
+        "Random": "R",
+        "AlwaysCooperate": "AC",
+        "AlwaysDefect": "AD",
+        "Tit4Tat": "T4T",
+        "True": "T",
+        "False": "F",
+    }
+    excluded_variants = {"coa", "coa_notgamified"}
+
+    all_label_tuples = [
+        t for t in all_label_tuples
+        if str(t[0]) not in excluded_variants
+    ]
+
     for vt, ht, ng in all_label_tuples:
-        label_strings.append(f"{vt} | {ht} | {ng}")
+        if str(vt) not in excluded_variants:
+            vt_short = abbrev.get(str(vt), str(vt))
+            ht_short = abbrev.get(str(ht), str(ht))
+            ng_short = abbrev.get(str(ng), str(ng))
+            label_strings.append(f"{vt_short}|{ht_short}|{ng_short}")
 
     n_models = len(dfs)
     n_labels = len(all_label_tuples)
@@ -152,7 +175,7 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
             ax.bar(bar_positions, bar_heights, yerr=bar_err, capsize=4, edgecolor="black")
 
         # Model subtitle: place on left of subplot
-        ax.set_title(model_names[i], fontsize=10, loc="left", pad=6, style="italic")
+        ax.set_title(model_names[i], fontsize=14, loc="left", pad=6, style="italic")
         ax.set_ylabel(ylabel)
         ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
 
@@ -162,13 +185,13 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
     # Configure x-axis ticks only on the bottom subplot
     # (set ticks at every label position so alignment remains consistent)
     axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(label_strings, rotation=65, ha="right", fontsize=10)
+    axes[-1].set_xticklabels(label_strings, rotation=0, ha="center", fontsize=13)
 
     # Ensure there's enough bottom margin so rotated labels are not clipped
     plt.subplots_adjust(bottom=0.3, top=0.94, hspace=0.35)
 
     # Overall title and layout
-    fig.suptitle(title, fontsize=14)
+    fig.suptitle(title, fontsize=13)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     if out_prefix:
@@ -188,6 +211,9 @@ def load_and_prepare(path):
             print(f"ERROR: Required column '{col}' not found in {path}.", file=sys.stderr)
             raise SystemExit(1)
 
+    # Remove Random heuristic rows
+    df = df[df["heuristic"].astype(str) != "Random"]
+
     # Coerce not_gamified to string (keeps grouping stable)
     df["not_gamified"] = df["not_gamified"].astype(str)
 
@@ -202,6 +228,35 @@ def load_and_prepare(path):
     df = df.dropna(subset=["coop_prob", "model_payoff"], how="all")
     return df
 
+def export_averages_to_csv(dfs, model_names, metrics, outfile="averages.csv"):
+    all_rows = []
+    for df, model_name in zip(dfs, model_names):
+        for metric in metrics:
+            summary = summarize_df(df, metric).reset_index(drop=True)
+            summary["model"] = model_name
+            summary["metric"] = metric
+
+            all_rows.append(
+                summary[
+                    [
+                    "model",
+                    "metric",
+                    "variant",
+                    "heuristic",
+                    "not_gamified",
+                    "mean",
+                    "std",
+                    "count",
+                    "se",
+                    "ci95",
+                    ]
+                ]
+            )
+
+    result = pd.concat(all_rows, ignore_index=True)
+    result.to_csv(outfile, index=False)
+
+    print(f"Saved averages to {outfile}")
 
 def main():
     parser = argparse.ArgumentParser(description="Plot stacked cooperation probability and model payoff across multiple models.")
@@ -241,6 +296,8 @@ def main():
         dfs.append(df)
         print(f"Loaded {len(df)} rows from {p}")
 
+    export_averages_to_csv(dfs,model_names,metrics=["coop_prob", "model_payoff"],outfile="model_averages.csv",)
+
     # For each metric, call the stacked plotter. Each plot receives full dfs list so x-axis labels stay consistent.
     plot_stacked_ci(
         dfs,
@@ -259,6 +316,7 @@ def main():
         model_names=model_names,
         out_prefix=args.out_prefix,
     )
+
 
 
 if __name__ == "__main__":

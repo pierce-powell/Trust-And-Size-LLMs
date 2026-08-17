@@ -12,7 +12,20 @@ cleanup_fallbacks.py
 - Writes removed fallback rows for inspection.
 
 Usage:
-    python cleanup_fallbacks.py --infile input.csv --outfile output.csv
+    python cleanup_fallbacks.py --infile raw_qwen_0.5B_IPD.csv --outfile fixed_qwen_0.5B.csv
+    python cleanup_fallbacks.py --infile raw_qwen_7B_IPD.csv --outfile fixed_qwen_7B.csv
+    python cleanup_fallbacks.py --infile raw_qwen_14B_IPD.csv --outfile fixed_qwen_14B.csv
+    python cleanup_fallbacks.py --infile raw_qwen_32B_IPD.csv --outfile fixed_qwen_32B.csv
+
+    python cleanup_fallbacks.py --infile raw_olmo_1B_IPD.csv --outfile fixed_olmo_1B.csv
+    python cleanup_fallbacks.py --infile raw_olmo_7B_IPD.csv --outfile fixed_olmo_7B.csv
+    python cleanup_fallbacks.py --infile raw_olmo_13B_IPD.csv --outfile fixed_olmo_13B.csv
+    python cleanup_fallbacks.py --infile raw_olmo_32B_IPD.csv --outfile fixed_olmo_32B.csv
+
+    python cleanup_fallbacks.py --infile raw_gemma_1B_IPD.csv --outfile fixed_gemma_1B.csv
+    python cleanup_fallbacks.py --infile raw_gemma_4B_IPD.csv --outfile fixed_gemma_4B.csv
+    python cleanup_fallbacks.py --infile raw_gemma_12B_IPD.csv --outfile fixed_gemma_12B.csv
+    python cleanup_fallbacks.py --infile raw_gemma_27B_IPD.csv --outfile fixed_gemma_27B.csv
 """
 
 import argparse
@@ -126,12 +139,18 @@ def main(argv):
         df[args.coop_prob_col] = pd.to_numeric(df[args.coop_prob_col], errors='coerce')
 
     # ------------------ Detect fallback rows ------------------ #
+    #fallback_mask = detect_fallback_rows(df, reason_col=args.reason_col)
+    #num_failures = int(fallback_mask.sum())
+    #print(f"Detected fallback rows: {num_failures}")
+
+    #df_clean = df.loc[~fallback_mask].copy()
+    #removed_df = df.loc[fallback_mask].copy()
+
     fallback_mask = detect_fallback_rows(df, reason_col=args.reason_col)
     num_failures = int(fallback_mask.sum())
     print(f"Detected fallback rows: {num_failures}")
 
-    df_clean = df.loc[~fallback_mask].copy()
-    removed_df = df.loc[fallback_mask].copy()
+    df_clean = df.copy()
 
     # ------------------ Recompute coop_prob ------------------ #
     group_cols = [c for c in args.group_cols if c in df_clean.columns]
@@ -147,10 +166,10 @@ def main(argv):
     df_clean.to_csv(outfile, index=False)
     print(f"Cleaned CSV written to: {outfile}")
 
-    if num_failures > 0:
-        removed_out = os.path.splitext(outfile)[0] + ".removed_rows.csv"
-        removed_df.to_csv(removed_out, index=False)
-        print(f"Removed fallback rows written to: {removed_out}")
+    #if num_failures > 0:
+        #removed_out = os.path.splitext(outfile)[0] + ".removed_rows.csv"
+        #removed_df.to_csv(removed_out, index=False)
+        #print(f"Removed fallback rows written to: {removed_out}")
 
     print(f"Summary: total_rows={len(df):,}, removed={num_failures}, remaining={len(df_clean):,}")
 

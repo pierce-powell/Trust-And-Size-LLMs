@@ -4,11 +4,9 @@ Compare trust-recovery across CSV results (supports multiple files and grouping)
 
 Usage examples:
   # by model size
-  python Trust_Recovery.py --infiles cleaned_qwen_0.5B_IPD.csv cleaned_gemma_1B_IPD.csv cleaned_olmo_1B_IPD.csv cleaned_deepseek_1.3B_IPD.csv cleaned_qwen_7_14B_IPD.csv cleaned_gemma_4_12B_IPD.csv cleaned_olmo_7_13B_IPD.csv cleaned_deepseek_6.7B_IPD.csv cleaned_qwen_32B_IPD.csv cleaned_gemma_27B_IPD.csv cleaned_olmo_32B_IPD.csv cleaned_deepseek_33B_IPD.csv --group_size 4 --group_labels "Small Models (Qwen2.5 0.5B, OLMo2 1B, Gemma3 1B, DeepSeek 1.3B)" "Medium Models (Qwen2.5 7B, 14B; OLMo2 7B, 13B; Gemma3 4B, 12B; DeepSeek 6.7B)" "Large Models (Qwen2.5 32B, OLMo2 32B, Gemma3 27B, DeepSeek 33B)"
-
-  # by model source
-  python Trust_Recovery.py --infiles cleaned_qwen_0.5B_IPD.csv cleaned_olmo_1B_IPD.csv cleaned_qwen_7_14B_IPD.csv cleaned_olmo_7_13B_IPD.csv cleaned_qwen_32B_IPD.csv cleaned_olmo_32B_IPD.csv cleaned_gemma_1B_IPD.csv cleaned_deepseek_1.3B_IPD.csv cleaned_gemma_4_12B_IPD.csv cleaned_deepseek_6.7B_IPD.csv cleaned_gemma_27B_IPD.csv cleaned_deepseek_33B_IPD.csv --group_size 6 --group_labels "Open-Source (Qwen2.5, OLMo2)" "Commercially Used (Gemma3, DeepSeek)"
+  python Trust_Recovery.py --infiles fixed_qwen_0.5B.csv fixed_olmo_1B.csv fixed_gemma_1B.csv fixed_qwen_7B.csv fixed_olmo_7B.csv fixed_gemma_4B.csv fixed_qwen_14B.csv fixed_olmo_13B.csv fixed_gemma_12B.csv fixed_qwen_32B.csv fixed_olmo_32B.csv fixed_gemma_27B.csv --group_size 3 --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)"
 """
+
 import argparse
 import os
 import sys
@@ -17,6 +15,19 @@ from typing import List
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+
+abbrev = {
+    "default": "D",
+    "default_notgamified": "Dng",
+    "game-theorist": "GT",
+    "game-theorist_notgamified": "GTng",
+    "Random": "R",
+    "AlwaysCooperate": "AC",
+    "AlwaysDefect": "AD",
+    "Tit4Tat": "T4T",
+    "True": "T",
+    "False": "F",
+}
 
 # ----------------------------
 # Trust-recovery helpers
@@ -53,7 +64,7 @@ def compute_recovery_summary(df: pd.DataFrame) -> pd.DataFrame:
 
     df_work = df.copy()
     # filter for Random heuristic (same as your original script)
-    df_work = df_work[df_work["heuristic"] == "Random"]
+    df_work = df_work[df_work["heuristic"] != "Random"]
     # keep only summary round if round column exists
     if "round" in df_work.columns:
         df_work = df_work[df_work["round"] == 100]
@@ -81,7 +92,6 @@ def compute_recovery_summary(df: pd.DataFrame) -> pd.DataFrame:
             "n_recovery_events": len(all_recoveries)
         })
     return pd.DataFrame(results)
-
 
 # ----------------------------
 # Summary & plotting helpers
@@ -126,7 +136,11 @@ def plot_stacked_ci(dfs: List[pd.DataFrame], metric: str, title: str, ylabel: st
     all_label_tuples = sorted({t for s in summaries for t in s.index.tolist()})
     label_strings = []
     for vt, ht, ng in all_label_tuples:
-        label_strings.append(f"{vt} | {ht} | {ng}")
+        vt_short = abbrev.get(str(vt), str(vt))
+        ht_short = abbrev.get(str(ht), str(ht))
+        ng_short = abbrev.get(str(ng), str(ng))
+
+        label_strings.append(f"{vt_short}|{ht_short}|{ng_short}")
 
     n_models = len(dfs)
     n_labels = len(all_label_tuples)
@@ -191,17 +205,19 @@ def plot_stacked_ci(dfs: List[pd.DataFrame], metric: str, title: str, ylabel: st
         bar_err = cis[i][mask]
 
         if bar_positions.size == 0:
-            ax.text(0.5, 0.5, "No data for this model / metric", ha="center", va="center", transform=ax.transAxes)
+            ax.text(0.5, 0.5, "NA", ha="center", va="center", transform=ax.transAxes)
         else:
             ax.bar(bar_positions, bar_heights, yerr=bar_err, capsize=4, edgecolor="black", color = "green")
 
-        ax.set_title(model_names[i], fontsize=10, loc="left", pad=6, style="italic")
+        ax.set_title(model_names[i], fontsize=14, loc="center", pad=6, style="italic")
         ax.set_ylabel(ylabel)
+        ax.tick_params(axis="y", labelsize=14)
+        ax.yaxis.label.set_size(14)
         ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
         ax.set_ylim(global_min - 0.05 * range_span, padded_max)
 
     axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(label_strings, ha="right", fontsize=10)
+    axes[-1].set_xticklabels(label_strings, rotation=90, ha="center", fontsize=14)
 
     plt.subplots_adjust(bottom=0.3, top=0.94, hspace=0.35)
     fig.suptitle(title, fontsize=14)
@@ -321,12 +337,46 @@ def main():
         print("ERROR: Internal mismatch between grouped_dfs and model names.", file=sys.stderr)
         raise SystemExit(1)
 
+    csv_rows = []
+
+    for model_name, df in zip(model_names_for_plot, grouped_dfs):
+        if df.empty:
+            continue
+
+        temp = df.copy()
+        temp["model_group"] = model_name
+
+        csv_rows.append(
+        temp[
+            [
+                "model_group",
+                "variant",
+                "heuristic",
+                "not_gamified",
+                "avg_recovery_time",
+                "n_recovery_events",
+            ]
+        ]
+    )
+        
+    if csv_rows:
+        output_df = pd.concat(csv_rows, ignore_index=True)
+
+    out_file = (
+        f"{args.out_prefix}_trust_recovery.csv"
+        if args.out_prefix
+        else "trust_recovery.csv"
+    )
+
+    output_df.to_csv(out_file, index=False)
+    print(f"Saved trust recovery values to {out_file}")
+
     # Plot average recovery time
     plot_stacked_ci(
         grouped_dfs,
         metric="avg_recovery_time",
         title="Trust Recovery Time: Average (distance from D -> next C)",
-        ylabel="Average Recovery Time (rounds)",
+        ylabel="Avg. Recovery Time",
         model_names=model_names_for_plot,
         out_prefix=args.out_prefix,
     )
