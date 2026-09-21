@@ -62,6 +62,8 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
         "AlwaysCooperate": "AC",
         "AlwaysDefect": "AD",
         "Tit4Tat": "T4T",
+        "TRUE": "T",
+        "FALSE": "F",
         "True": "T",
         "False": "F",
     }
@@ -175,23 +177,19 @@ def plot_stacked_ci(dfs, metric, title, ylabel, model_names, out_prefix=None):
             ax.bar(bar_positions, bar_heights, yerr=bar_err, capsize=4, edgecolor="black")
 
         # Model subtitle: place on left of subplot
-        ax.set_title(model_names[i], fontsize=14, loc="left", pad=6, style="italic")
-        ax.set_ylabel(ylabel)
+        ax.set_title(model_names[i], fontsize=15, loc="left", pad=6, style="italic")
+        ax.set_ylabel(ylabel, fontsize=15)
+        ax.tick_params(axis="y", labelsize=15)
         ax.yaxis.grid(True, linestyle="--", linewidth=0.5, alpha=0.7)
-
-        # Set the same y-limits for every subplot (padded)
         ax.set_ylim(padded_min, padded_max)
 
-    # Configure x-axis ticks only on the bottom subplot
-    # (set ticks at every label position so alignment remains consistent)
     axes[-1].set_xticks(x)
-    axes[-1].set_xticklabels(label_strings, rotation=0, ha="center", fontsize=13)
-
+    axes[-1].set_xticklabels(label_strings, rotation=90, ha="right", fontsize=15)
     # Ensure there's enough bottom margin so rotated labels are not clipped
     plt.subplots_adjust(bottom=0.3, top=0.94, hspace=0.35)
 
     # Overall title and layout
-    fig.suptitle(title, fontsize=13)
+    fig.suptitle(title, fontsize=15)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     if out_prefix:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-# Group by Size Groups
-python compare_results_all.py --infiles fixed_qwen_0.5B.csv fixed_olmo_1B.csv fixed_gemma_1B.csv fixed_qwen_7B.csv fixed_olmo_7B.csv fixed_gemma_4B.csv fixed_qwen_14B.csv fixed_olmo_13B.csv fixed_gemma_12B.csv fixed_qwen_32B.csv fixed_olmo_32B.csv fixed_gemma_27B.csv --group_size 3 --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)"
+# Group B_IPDy Size Groups
+python compare_results_all.py --infiles fixed_qwen_05B_IPD.csv fixed_olmo_1B_IPD.csv fixed_gemma_1B_IPD.csv fixed_qwen_7B_IPD.csv fixed_olmo_7B_IPD.csv fixed_gemma_4B_IPD.csv fixed_qwen_14B_IPD.csv fixed_olmo_13B_IPD.csv fixed_gemma_12B_IPD.csv fixed_qwen_32B_IPD.csv fixed_olmo_32B_IPD.csv fixed_gemma_27B_IPD.csv --group_size 3 --group_labels "Small Models (Qwen 0.5B, OLMo 1B, Gemma 1B)" "Small-Medium Models (Qwen 7B, OLMo 7B, Gemma 4B)" "Large-Medium Models (Qwen 14B, OLMo 13B, Gemma 12B)" "Large Models (Qwen 32B, OLMo 32B, Gemma 27B)"
 """
 
 import argparse
@@ -302,7 +302,7 @@ def main():
         grouped_dfs,
         metric="coop_prob",
         title="IPD: Average Cooperation Probability",
-        ylabel="Cooperation Probability",
+        ylabel="Coop. Probability",
         model_names=model_names_for_plot,
         out_prefix=args.out_prefix,
     )

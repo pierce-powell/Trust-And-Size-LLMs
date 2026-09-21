@@ -20,11 +20,10 @@ parse_file_info <- function(path) {
   fname <- basename(path)
   tibble(
     file = path,
-    model_family = case_when(
+    model= case_when(
       str_detect(fname, regex("qwen",  ignore_case = TRUE)) ~ "Qwen",
       str_detect(fname, regex("gemma", ignore_case = TRUE)) ~ "GEMMA",
       str_detect(fname, regex("olmo",  ignore_case = TRUE)) ~ "OLMo",
-      str_detect(fname, regex("deepseek",   ignore_case = TRUE)) ~ "DeepSeek",
       TRUE ~ "Other"
     ),
     size_category = case_when(
@@ -39,7 +38,6 @@ parse_file_info <- function(path) {
       TRUE ~ "unknown"
     ),
     experiment = case_when(
-      str_detect(fname, regex("dic", ignore_case = TRUE)) ~ "Dictator",
       str_detect(fname, regex("ipd",      ignore_case = TRUE)) ~ "IPD",
       TRUE ~ "Unknown"
     )
@@ -47,12 +45,12 @@ parse_file_info <- function(path) {
 }
 
 # ===== 3. Load and tag files (FAST) =====
-load_and_tag <- function(file, model_family, size_category, experiment) {
+load_and_tag <- function(file, model, size_category, experiment) {
   dat <- vroom::vroom(file, col_types = cols(.default = "c"))  # all char, fast
 
   dat %>%
     mutate(
-      model_family = model_family,
+      model = model,
       size_category = size_category,
       experiment = experiment
     )
@@ -62,8 +60,9 @@ load_and_tag <- function(file, model_family, size_category, experiment) {
 ipd_files <- list.files(ipd_dir, pattern = "*.csv", full.names = TRUE)
 ipd_map   <- bind_rows(lapply(ipd_files, parse_file_info))
 
+
 ipd_data <- ipd_map %>%
-  select(file, model_family, size_category, experiment) %>%
+  select(file, model, size_category, experiment) %>%
   pmap_dfr(load_and_tag)
 
 # ===== 3b. Safe type conversion AFTER merge =====
@@ -78,7 +77,7 @@ convert_types <- function(df) {
     "total_A","total_B","coop_prob","coop_streak","relative_payoff"
   )
   logical_cols <- c("not_gamified","serious","game_theorist")
-  char_cols    <- c("timestamp","seed","model_family","size_category","experiment")
+  char_cols    <- c("timestamp","seed","model","size_category","experiment")
 
   for (col in numeric_cols) df <- safe_as(df, col, as.numeric)
   for (col in logical_cols) df <- safe_as(df, col, as.logical)
@@ -90,7 +89,7 @@ convert_types <- function(df) {
 ipd_data      <- convert_types(ipd_data)
 
 # Drop unknown sizes
-ipd_data      <- ipd_data      %>% filter(size_category %in% c("small","small-medium""large-medium","large"))
+ipd_data      <- ipd_data      %>% filter(size_category %in% c("small","small-medium","large-medium","large"))
 
 # ===== 4. Helper functions =====
 boot_median <- function(x, i) median(x[i], na.rm = TRUE)
